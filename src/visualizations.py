@@ -26,19 +26,23 @@ def plot_birth_rate_evolution(df, countries=None):
     Gráfico de líneas: evolución temporal de la tasa de natalidad
     
     Args:
-        df (pd.DataFrame): Dataset con columnas Year, Birth Rate, Country Name
+        df (pd.DataFrame): Dataset con columnas Año, Natalidad, Pais
         countries (list, optional): Lista de países a destacar
         
     Returns:
         alt.Chart: Gráfico de Altair
     """
-    if 'Year' not in df.columns or 'Birth Rate' not in df.columns:
-        st.warning(" Columnas necesarias no encontradas")
+    # Detectar nombres de columnas
+    year_col = 'Año' if 'Año' in df.columns else 'Year'
+    birth_col = 'Natalidad' if 'Natalidad' in df.columns else 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
+    country_col = 'Pais' if 'Pais' in df.columns else 'País' if 'País' in df.columns else 'Country Name'
+    
+    if year_col not in df.columns or birth_col not in df.columns:
+        print(f"⚠️ Columnas necesarias no encontradas. Buscando: {year_col}, {birth_col}")
         return None
     
     # Calcular promedio global por año
-    df_global = df.groupby('Year')['Birth Rate'].mean().reset_index()
-    df_global.columns = ['Year', 'Birth Rate']
+    df_global = df.groupby(year_col)[birth_col].mean().reset_index()
     
     # Gráfico base: promedio global
     base = alt.Chart(df_global).mark_line(
@@ -46,15 +50,15 @@ def plot_birth_rate_evolution(df, countries=None):
         strokeWidth=3,
         point=alt.OverlayMarkDef(color='steelblue', size=60)
     ).encode(
-        x=alt.X('Year:Q', 
+        x=alt.X(f'{year_col}:Q', 
                 title='Año',
                 axis=alt.Axis(format='d')),
-        y=alt.Y('Birth Rate:Q', 
+        y=alt.Y(f'{birth_col}:Q', 
                 title='Tasa de Natalidad (por 1000 habitantes)',
                 scale=alt.Scale(zero=False)),
         tooltip=[
-            alt.Tooltip('Year:Q', title='Año', format='d'),
-            alt.Tooltip('Birth Rate:Q', title='Tasa de Natalidad', format='.2f')
+            alt.Tooltip(f'{year_col}:Q', title='Año', format='d'),
+            alt.Tooltip(f'{birth_col}:Q', title='Tasa de Natalidad', format='.2f')
         ]
     ).properties(
         width=700,
@@ -63,18 +67,18 @@ def plot_birth_rate_evolution(df, countries=None):
     )
     
     # Si se especifican países, agregar sus líneas
-    if countries and 'Country Name' in df.columns:
-        df_countries = df[df['Country Name'].isin(countries)]
+    if countries and country_col in df.columns:
+        df_countries = df[df[country_col].isin(countries)]
         
         countries_lines = alt.Chart(df_countries).mark_line(
             strokeWidth=2,
             opacity=0.7
         ).encode(
-            x='Year:Q',
-            y='Birth Rate:Q',
-            color=alt.Color('Country Name:N', 
+            x=f'{year_col}:Q',
+            y=f'{birth_col}:Q',
+            color=alt.Color(f'{country_col}:N', 
                           legend=alt.Legend(title='País')),
-            tooltip=['Year:Q', 'Country Name:N', 'Birth Rate:Q']
+            tooltip=[f'{year_col}:Q', f'{country_col}:N', f'{birth_col}:Q']
         )
         
         return (base + countries_lines).interactive()
@@ -91,42 +95,47 @@ def plot_regional_comparison(df, year=None):
     Gráfico de barras: comparación de natalidad por región
     
     Args:
-        df (pd.DataFrame): Dataset con columnas Region, Birth Rate
+        df (pd.DataFrame): Dataset con columnas Region, Tasa de natalidad
         year (int, optional): Año específico a visualizar
         
     Returns:
         alt.Chart: Gráfico de Altair
     """
-    if 'Region' not in df.columns or 'Birth Rate' not in df.columns:
-        st.warning(" Columnas necesarias no encontradas")
+    # Detectar nombres de columnas
+    region_col = 'Region' if 'Region' in df.columns else 'Región'
+    birth_col = 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
+    year_col = 'Año' if 'Año' in df.columns else 'Year'
+    
+    if region_col not in df.columns or birth_col not in df.columns:
+        st.warning("⚠️ Columnas necesarias no encontradas")
         return None
     
     df_viz = df.copy()
     
     # Filtrar por año si se especifica
-    if year and 'Year' in df.columns:
-        df_viz = df_viz[df_viz['Year'] == year]
+    if year and year_col in df.columns:
+        df_viz = df_viz[df_viz[year_col] == year]
         title = f'Tasa de Natalidad por Región ({year})'
     else:
         title = 'Tasa de Natalidad Promedio por Región'
     
     # Agrupar por región
-    df_regional = df_viz.groupby('Region')['Birth Rate'].mean().reset_index()
-    df_regional = df_regional.sort_values('Birth Rate', ascending=False)
+    df_regional = df_viz.groupby(region_col)[birth_col].mean().reset_index()
+    df_regional = df_regional.sort_values(birth_col, ascending=False)
     
     chart = alt.Chart(df_regional).mark_bar().encode(
-        x=alt.X('Birth Rate:Q', 
+        x=alt.X(f'{birth_col}:Q', 
                 title='Tasa de Natalidad Promedio',
                 scale=alt.Scale(zero=True)),
-        y=alt.Y('Region:N', 
+        y=alt.Y(f'{region_col}:N', 
                 title='Región',
                 sort='-x'),
-        color=alt.Color('Birth Rate:Q',
+        color=alt.Color(f'{birth_col}:Q',
                        scale=alt.Scale(scheme='blues'),
                        legend=None),
         tooltip=[
-            alt.Tooltip('Region:N', title='Región'),
-            alt.Tooltip('Birth Rate:Q', title='Tasa de Natalidad', format='.2f')
+            alt.Tooltip(f'{region_col}:N', title='Región'),
+            alt.Tooltip(f'{birth_col}:Q', title='Tasa de Natalidad', format='.2f')
         ]
     ).properties(
         width=700,
@@ -154,44 +163,52 @@ def plot_top_countries(df, n=15, year=None, ascending=False):
     Returns:
         alt.Chart: Gráfico de Altair
     """
-    if 'Country Name' not in df.columns or 'Birth Rate' not in df.columns:
-        st.warning(" Columnas necesarias no encontradas")
+    # Detectar nombres de columnas
+    country_col = 'Pais' if 'Pais' in df.columns else 'País' if 'País' in df.columns else 'Country Name'
+    birth_col = 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
+    region_col = 'Region' if 'Region' in df.columns else 'Región'
+    year_col = 'Año' if 'Año' in df.columns else 'Year'
+    
+    if country_col not in df.columns or birth_col not in df.columns:
+        st.warning("⚠️ Columnas necesarias no encontradas")
         return None
     
     df_viz = df.copy()
     
     # Filtrar por año si se especifica
-    if year and 'Year' in df.columns:
-        df_viz = df_viz[df_viz['Year'] == year]
+    if year and year_col in df.columns:
+        df_viz = df_viz[df_viz[year_col] == year]
     else:
         # Usar el año más reciente
-        if 'Year' in df.columns:
-            df_viz = df_viz[df_viz['Year'] == df_viz['Year'].max()]
-            year = df_viz['Year'].max()
+        if year_col in df.columns:
+            df_viz = df_viz[df_viz[year_col] == df_viz[year_col].max()]
+            year = df_viz[year_col].max()
     
     # Obtener top/bottom países
-    df_viz = df_viz.sort_values('Birth Rate', ascending=ascending)
-    df_top = df_viz.head(n)[['Country Name', 'Birth Rate', 'Region']].copy()
+    df_viz = df_viz.sort_values(birth_col, ascending=ascending)
+    cols_to_keep = [country_col, birth_col]
+    if region_col in df.columns:
+        cols_to_keep.append(region_col)
+    df_top = df_viz.head(n)[cols_to_keep].copy()
     
     title = f'{"Bottom" if ascending else "Top"} {n} Países por Tasa de Natalidad'
     if year:
         title += f' ({int(year)})'
     
     chart = alt.Chart(df_top).mark_bar().encode(
-        x=alt.X('Birth Rate:Q', 
+        x=alt.X(f'{birth_col}:Q', 
                 title='Tasa de Natalidad',
                 scale=alt.Scale(zero=True)),
-        y=alt.Y('Country Name:N', 
+        y=alt.Y(f'{country_col}:N', 
                 title='País',
                 sort='-x' if not ascending else 'x'),
-        color=alt.Color('Region:N',
+        color=alt.Color(f'{region_col}:N',
                        legend=alt.Legend(title='Región'),
-                       scale=alt.Scale(scheme='category20')),
+                       scale=alt.Scale(scheme='category20')) if region_col in df_top.columns else alt.value('steelblue'),
         tooltip=[
-            alt.Tooltip('Country Name:N', title='País'),
-            alt.Tooltip('Birth Rate:Q', title='Tasa de Natalidad', format='.2f'),
-            alt.Tooltip('Region:N', title='Región')
-        ]
+            alt.Tooltip(f'{country_col}:N', title='País'),
+            alt.Tooltip(f'{birth_col}:Q', title='Tasa de Natalidad', format='.2f')
+        ] + ([alt.Tooltip(f'{region_col}:N', title='Región')] if region_col in df_top.columns else [])
     ).properties(
         width=700,
         height=500,
@@ -219,7 +236,7 @@ def plot_correlation_scatter(df, x_var, y_var, year=None):
         alt.Chart: Gráfico de Altair
     """
     if x_var not in df.columns or y_var not in df.columns:
-        st.warning(f" Variables {x_var} o {y_var} no encontradas")
+        st.warning(f"⚠️ Variables {x_var} o {y_var} no encontradas")
         return None
     
     df_viz = df.copy()
@@ -291,7 +308,7 @@ def plot_distribution(df, variable='Birth Rate', bins=30):
         alt.Chart: Gráfico de Altair
     """
     if variable not in df.columns:
-        st.warning(f" Variable {variable} no encontrada")
+        st.warning(f"⚠️ Variable {variable} no encontrada")
         return None
     
     df_viz = df[[variable]].dropna()
@@ -334,7 +351,7 @@ def plot_temporal_heatmap(df, countries=None):
         alt.Chart: Gráfico de Altair
     """
     if 'Year' not in df.columns or 'Birth Rate' not in df.columns or 'Country Name' not in df.columns:
-        st.warning(" Columnas necesarias no encontradas")
+        st.warning("⚠️ Columnas necesarias no encontradas")
         return None
     
     df_viz = df.copy()
@@ -380,4 +397,4 @@ def get_numeric_columns(df):
 
 
 if __name__ == "__main__":
-    print(" Módulo de visualizaciones cargado correctamente")
+    print("✅ Módulo de visualizaciones cargado correctamente")

@@ -15,12 +15,13 @@ import streamlit as st
 # ============================================
 
 @st.cache_data
-def load_data(filepath='data/raw/merged_dataset.csv'):
+def load_data(filepath='data/raw/df_con_features_temporales.csv', add_geography=True):
     """
     Carga el dataset principal con cache de Streamlit
     
     Args:
         filepath (str): Ruta al archivo CSV
+        add_geography (bool): Si True, agrega columnas de región y continente
         
     Returns:
         pd.DataFrame: Dataset cargado
@@ -40,6 +41,13 @@ def load_data(filepath='data/raw/merged_dataset.csv'):
         
         df = pd.read_csv(filepath)
         print(f"✅ Dataset cargado: {df.shape[0]} filas, {df.shape[1]} columnas")
+        
+        # Agregar información geográfica si se solicita
+        if add_geography:
+            from src.geography_utils import add_geographic_info
+            df = add_geographic_info(df)
+            print(f"✅ Información geográfica agregada")
+        
         return df
     except Exception as e:
         error_msg = f"❌ Error al cargar datos: {e}"
@@ -64,8 +72,8 @@ def get_data_info(df):
     """
     # Detectar nombres de columnas (español o inglés)
     year_col = 'Año' if 'Año' in df.columns else 'Year' if 'Year' in df.columns else None
-    country_col = 'País' if 'País' in df.columns else 'Country Name' if 'Country Name' in df.columns else None
-    region_col = 'Región' if 'Región' in df.columns else 'Region' if 'Region' in df.columns else None
+    country_col = 'Pais' if 'Pais' in df.columns else 'País' if 'País' in df.columns else 'Country Name' if 'Country Name' in df.columns else None
+    region_col = 'Region' if 'Region' in df.columns else 'Región' if 'Región' in df.columns else None
     
     info = {
         'n_filas': len(df),
@@ -303,7 +311,7 @@ def get_available_regions(df):
 
 def get_available_countries(df):
     """Retorna lista de países disponibles"""
-    country_col = 'País' if 'País' in df.columns else 'Country Name'
+    country_col = 'Pais' if 'Pais' in df.columns else 'País' if 'País' in df.columns else 'Country Name'
     if country_col in df.columns:
         return sorted(df[country_col].unique().tolist())
     return []
@@ -324,9 +332,9 @@ def get_top_countries(df, n=10, year=None):
     df_temp = df.copy()
     
     year_col = 'Año' if 'Año' in df.columns else 'Year'
-    country_col = 'País' if 'País' in df.columns else 'Country Name'
-    birth_col = 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
-    region_col = 'Región' if 'Región' in df.columns else 'Region'
+    country_col = 'Pais' if 'Pais' in df.columns else 'País' if 'País' in df.columns else 'Country Name'
+    birth_col = 'Natalidad' if 'Natalidad' in df.columns else 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
+    region_col = 'Region' if 'Region' in df.columns else 'Región'
     
     if year and year_col in df.columns:
         df_temp = df_temp[df_temp[year_col] == year]
@@ -354,7 +362,7 @@ def calculate_global_average(df, year=None):
     df_temp = df.copy()
     
     year_col = 'Año' if 'Año' in df.columns else 'Year'
-    birth_col = 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
+    birth_col = 'Natalidad' if 'Natalidad' in df.columns else 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
     
     if year and year_col in df.columns:
         df_temp = df_temp[df_temp[year_col] == year]
@@ -391,7 +399,7 @@ if __name__ == "__main__":
     df = load_data()
     if df is not None:
         info = get_data_info(df)
-        print(f"\n Dataset cargado:")
+        print(f"\n📊 Dataset cargado:")
         print(f"  - Filas: {info['n_filas']}")
         print(f"  - Columnas: {info['n_columnas']}")
         print(f"  - Países: {info['paises_unicos']}")
