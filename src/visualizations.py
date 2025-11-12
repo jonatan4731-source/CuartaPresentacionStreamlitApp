@@ -1,400 +1,477 @@
 """
-Funciones de visualización con Altair para el proyecto de natalidad
-Basado en CuartaPresentacion.ipynb
+Visualizaciones de Altair basadas en CuartaPresentacion.ipynb
 """
 
 import altair as alt
 import pandas as pd
-import streamlit as st
+import numpy as np
 
 
 # ============================================
 # CONFIGURACIÓN GLOBAL
 # ============================================
 
-# Configurar Altair para Streamlit
-alt.data_transformers.enable('default')
-alt.renderers.enable('default')
+# Habilitar manejo de datasets grandes
+alt.data_transformers.disable_max_rows()
 
 
 # ============================================
-# VISUALIZACIÓN 1: EVOLUCIÓN TEMPORAL GLOBAL
+# VIZ 1: EVOLUCIÓN TEMPORAL POR REGIÓN
 # ============================================
 
-def plot_birth_rate_evolution(df, countries=None):
+def viz_evolucion_temporal_regiones(df):
     """
-    Gráfico de líneas: evolución temporal de la tasa de natalidad
+    Visualización 1: Evolución temporal de natalidad por región
+    Replica la visualización del notebook
     
     Args:
-        df (pd.DataFrame): Dataset con columnas Año, Natalidad, Pais
-        countries (list, optional): Lista de países a destacar
+        df: DataFrame procesado con columnas Año, Natalidad, Continente, Region
         
     Returns:
         alt.Chart: Gráfico de Altair
     """
-    # Detectar nombres de columnas
-    year_col = 'Año' if 'Año' in df.columns else 'Year'
-    birth_col = 'Natalidad' if 'Natalidad' in df.columns else 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
-    country_col = 'Pais' if 'Pais' in df.columns else 'País' if 'País' in df.columns else 'Country Name'
+    # Preparar datos agregados
+    df_limpio = df.dropna(subset=['Continente', 'Region'])
     
-    if year_col not in df.columns or birth_col not in df.columns:
-        print(f"⚠️ Columnas necesarias no encontradas. Buscando: {year_col}, {birth_col}")
-        return None
+    datos_agregados = df_limpio.groupby(['Año', 'Continente', 'Region']).agg({
+        'Natalidad': 'mean',
+        'Pais': 'count'
+    }).reset_index()
     
-    # Calcular promedio global por año
-    df_global = df.groupby(year_col)[birth_col].mean().reset_index()
+    datos_agregados.columns = ['Año', 'Continente', 'Region', 'Natalidad_Promedio', 'Num_Paises']
+    datos_agregados['Natalidad_Promedio'] = datos_agregados['Natalidad_Promedio'].round(2)
     
-    # Gráfico base: promedio global
-    base = alt.Chart(df_global).mark_line(
-        color='steelblue',
-        strokeWidth=3,
-        point=alt.OverlayMarkDef(color='steelblue', size=60)
+    # Selector de continente
+    selector_continente = alt.selection_point(
+        fields=['Continente'],
+        bind=alt.binding_select(
+            options=[None] + sorted(list(datos_agregados['Continente'].unique())),
+            labels=['Todos'] + sorted(list(datos_agregados['Continente'].unique())),
+            name='Filtrar por Continente: '
+        ),
+        value='América'
+    )
+    
+    # Selector para highlight de línea
+    hover_region_selection = alt.selection_point(
+        fields=['Region'],
+        on='mouseover',
+        nearest=True,
+        empty=False
+    )
+    
+    # Selector para highlight de punto
+    hover_point_selection = alt.selection_point(
+        on='mouseover',
+        nearest=True,
+        empty=False
+    )
+    
+    # Gráfico base: líneas por región
+    base = alt.Chart(datos_agregados).mark_line(
+        strokeWidth=2.5
     ).encode(
-        x=alt.X(f'{year_col}:Q', 
-                title='Año',
-                axis=alt.Axis(format='d')),
-        y=alt.Y(f'{birth_col}:Q', 
-                title='Tasa de Natalidad (por 1000 habitantes)',
+        x=alt.X('Año:O',
+                axis=alt.Axis(
+                    title='Año',
+                    labelAngle=-45,
+                    titleFontSize=14,
+                    titleFontWeight='bold',
+                    labelFontSize=11
+                )),
+        y=alt.Y('Natalidad_Promedio:Q',
+                axis=alt.Axis(
+                    title='Natalidad Promedio (nacimientos por 1000 hab)',
+                    titleFontSize=14,
+                    titleFontWeight='bold',
+                    labelFontSize=11
+                ),
                 scale=alt.Scale(zero=False)),
+        color=alt.Color('Continente:N',
+                      legend=alt.Legend(
+                          title='Continente',
+                          titleFontSize=13,
+                          titleFontWeight='bold',
+                          labelFontSize=11
+                      )),
+        detail='Region:N',
+        opacity=alt.condition(hover_region_selection, alt.value(1), alt.value(0.1)),
         tooltip=[
-            alt.Tooltip(f'{year_col}:Q', title='Año', format='d'),
-            alt.Tooltip(f'{birth_col}:Q', title='Tasa de Natalidad', format='.2f')
+            alt.Tooltip('Region:N', title='Región'),
+            alt.Tooltip('Continente:N', title='Continente'),
+            alt.Tooltip('Año:O', title='Año'),
+            alt.Tooltip('Natalidad_Promedio:Q', title='Natalidad Promedio', format='.2f'),
+            alt.Tooltip('Num_Paises:Q', title='Número de Países')
         ]
-    ).properties(
-        width=700,
-        height=400,
-        title='Evolución Global de la Tasa de Natalidad'
+    ).transform_filter(
+        selector_continente
     )
     
-    # Si se especifican países, agregar sus líneas
-    if countries and country_col in df.columns:
-        df_countries = df[df[country_col].isin(countries)]
-        
-        countries_lines = alt.Chart(df_countries).mark_line(
-            strokeWidth=2,
-            opacity=0.7
-        ).encode(
-            x=f'{year_col}:Q',
-            y=f'{birth_col}:Q',
-            color=alt.Color(f'{country_col}:N', 
-                          legend=alt.Legend(title='País')),
-            tooltip=[f'{year_col}:Q', f'{country_col}:N', f'{birth_col}:Q']
-        )
-        
-        return (base + countries_lines).interactive()
+    # Puntos
+    points = base.mark_circle(size=60).add_params(
+        hover_region_selection,
+        hover_point_selection
+    )
     
-    return base.interactive()
+    # Línea de tendencia
+    tendencia_global = alt.Chart(datos_agregados).mark_line(
+        strokeDash=[5, 5],
+        strokeWidth=3,
+        color='red',
+        opacity=0.6
+    ).encode(
+        x='Año:O',
+        y='mean(Natalidad_Promedio):Q'
+    ).transform_filter(
+        selector_continente
+    )
+    
+    # Texto con región
+    text_region = base.mark_text(
+        align='left',
+        dx=5,
+        dy=-10,
+        fontSize=12,
+        fontWeight='bold'
+    ).encode(
+        text='Region:N',
+        color=alt.value('black'),
+        opacity=alt.condition(hover_point_selection, alt.value(1), alt.value(0))
+    )
+    
+    # Combinar
+    chart = (base + points + tendencia_global + text_region).add_params(
+        selector_continente
+    ).properties(
+        width=1080,
+        height=720,
+        title={
+            'text': 'Evolución Temporal de la Natalidad por Región Geográfica',
+            'subtitle': [
+                'Promedio de nacimientos por 1000 habitantes | Interactivo: Selecciona continente y pasa el mouse sobre las líneas',
+                'Línea roja punteada: Tendencia promedio del continente seleccionado'
+            ],
+            'fontSize': 18,
+            'fontWeight': 'bold',
+            'anchor': 'start',
+            'subtitleFontSize': 12,
+            'subtitleColor': 'gray'
+        }
+    ).configure_axis(
+        gridColor='lightgray',
+        gridOpacity=0.5
+    ).configure_view(
+        strokeWidth=0
+    )
+    
+    return chart
 
 
 # ============================================
-# VISUALIZACIÓN 2: COMPARACIÓN POR REGIÓN
+# VIZ 2: CORRELACIONES INTERACTIVAS
 # ============================================
 
-def plot_regional_comparison(df, year=None):
+def viz_correlaciones_interactivas(df):
     """
-    Gráfico de barras: comparación de natalidad por región
+    Visualización 2: Scatter plot interactivo de correlaciones
     
     Args:
-        df (pd.DataFrame): Dataset con columnas Region, Tasa de natalidad
-        year (int, optional): Año específico a visualizar
+        df: DataFrame procesado
         
     Returns:
         alt.Chart: Gráfico de Altair
     """
-    # Detectar nombres de columnas
-    region_col = 'Region' if 'Region' in df.columns else 'Región'
-    birth_col = 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
-    year_col = 'Año' if 'Año' in df.columns else 'Year'
+    # Variables socioeconómicas clave
+    variables_analisis = {
+        'EsperanzaVida': 'Esperanza de Vida (años)',
+        'PIB_per_capita': 'PIB per cápita (USD)',
+        'Urbanizacion': 'Urbanización (%)',
+        'GastoSalud': 'Gasto en Salud (% PIB)',
+        'AccesoEducacion': 'Acceso a Educación (%)',
+        'Desempleo': 'Desempleo (%)',
+        'AccesoAguaPotable': 'Acceso a Agua Potable (%)',
+        'MujeresParlamento': 'Mujeres en Parlamento (%)',
+    }
     
-    if region_col not in df.columns or birth_col not in df.columns:
-        st.warning("⚠️ Columnas necesarias no encontradas")
-        return None
+    # Filtrar solo variables disponibles
+    variables_disponibles = {
+        var: label for var, label in variables_analisis.items()
+        if var in df.columns
+    }
     
-    df_viz = df.copy()
+    # Preparar datos (últimos 5 años)
+    columnas_necesarias = ['Año', 'Pais', 'Natalidad', 'Continente'] + list(variables_disponibles.keys())
+    df_viz = df[columnas_necesarias].dropna(subset=['Natalidad'])
     
-    # Filtrar por año si se especifica
-    if year and year_col in df.columns:
-        df_viz = df_viz[df_viz[year_col] == year]
-        title = f'Tasa de Natalidad por Región ({year})'
-    else:
-        title = 'Tasa de Natalidad Promedio por Región'
+    año_max = df_viz['Año'].max()
+    df_viz = df_viz[df_viz['Año'] >= año_max - 4].copy()
     
-    # Agrupar por región
-    df_regional = df_viz.groupby(region_col)[birth_col].mean().reset_index()
-    df_regional = df_regional.sort_values(birth_col, ascending=False)
-    
-    chart = alt.Chart(df_regional).mark_bar().encode(
-        x=alt.X(f'{birth_col}:Q', 
-                title='Tasa de Natalidad Promedio',
-                scale=alt.Scale(zero=True)),
-        y=alt.Y(f'{region_col}:N', 
-                title='Región',
-                sort='-x'),
-        color=alt.Color(f'{birth_col}:Q',
-                       scale=alt.Scale(scheme='blues'),
-                       legend=None),
-        tooltip=[
-            alt.Tooltip(f'{region_col}:N', title='Región'),
-            alt.Tooltip(f'{birth_col}:Q', title='Tasa de Natalidad', format='.2f')
-        ]
-    ).properties(
-        width=700,
-        height=400,
-        title=title
+    # Transformar a formato long
+    df_long = df_viz.melt(
+        id_vars=['Año', 'Pais', 'Natalidad', 'Continente'],
+        value_vars=list(variables_disponibles.keys()),
+        var_name='variable',
+        value_name='valor'
     )
     
-    return chart.interactive()
-
-
-# ============================================
-# VISUALIZACIÓN 3: TOP PAÍSES
-# ============================================
-
-def plot_top_countries(df, n=15, year=None, ascending=False):
-    """
-    Gráfico de barras horizontales: top países por natalidad
+    # Limpiar datos
+    df_clean = df_long.replace([np.inf, -np.inf], np.nan)
+    df_clean = df_clean.dropna(subset=['valor', 'Natalidad'])
     
-    Args:
-        df (pd.DataFrame): Dataset
-        n (int): Número de países a mostrar
-        year (int, optional): Año específico
-        ascending (bool): Si True, muestra los países con menor natalidad
-        
-    Returns:
-        alt.Chart: Gráfico de Altair
-    """
-    # Detectar nombres de columnas
-    country_col = 'Pais' if 'Pais' in df.columns else 'País' if 'País' in df.columns else 'Country Name'
-    birth_col = 'Tasa de natalidad' if 'Tasa de natalidad' in df.columns else 'Birth Rate'
-    region_col = 'Region' if 'Region' in df.columns else 'Región'
-    year_col = 'Año' if 'Año' in df.columns else 'Year'
+    # Calcular correlaciones
+    df_corr = df_clean.groupby('variable', include_groups=False).apply(
+        lambda g: g['valor'].corr(g['Natalidad'])
+    ).reset_index(name='correlation')
     
-    if country_col not in df.columns or birth_col not in df.columns:
-        st.warning("⚠️ Columnas necesarias no encontradas")
-        return None
+    # Calcular líneas de regresión
+    def get_reg_line(g):
+        m, b = np.polyfit(g['valor'], g['Natalidad'], 1)
+        x_min, x_max = g['valor'].min(), g['valor'].max()
+        return pd.DataFrame({
+            'valor': [x_min, x_max],
+            'Natalidad_pred': [m * x_min + b, m * x_max + b]
+        })
     
-    df_viz = df.copy()
+    df_reg_lines = df_clean.groupby('variable', include_groups=False).apply(get_reg_line).reset_index()
     
-    # Filtrar por año si se especifica
-    if year and year_col in df.columns:
-        df_viz = df_viz[df_viz[year_col] == year]
-    else:
-        # Usar el año más reciente
-        if year_col in df.columns:
-            df_viz = df_viz[df_viz[year_col] == df_viz[year_col].max()]
-            year = df_viz[year_col].max()
-    
-    # Obtener top/bottom países
-    df_viz = df_viz.sort_values(birth_col, ascending=ascending)
-    cols_to_keep = [country_col, birth_col]
-    if region_col in df.columns:
-        cols_to_keep.append(region_col)
-    df_top = df_viz.head(n)[cols_to_keep].copy()
-    
-    title = f'{"Bottom" if ascending else "Top"} {n} Países por Tasa de Natalidad'
-    if year:
-        title += f' ({int(year)})'
-    
-    chart = alt.Chart(df_top).mark_bar().encode(
-        x=alt.X(f'{birth_col}:Q', 
-                title='Tasa de Natalidad',
-                scale=alt.Scale(zero=True)),
-        y=alt.Y(f'{country_col}:N', 
-                title='País',
-                sort='-x' if not ascending else 'x'),
-        color=alt.Color(f'{region_col}:N',
-                       legend=alt.Legend(title='Región'),
-                       scale=alt.Scale(scheme='category20')) if region_col in df_top.columns else alt.value('steelblue'),
-        tooltip=[
-            alt.Tooltip(f'{country_col}:N', title='País'),
-            alt.Tooltip(f'{birth_col}:Q', title='Tasa de Natalidad', format='.2f')
-        ] + ([alt.Tooltip(f'{region_col}:N', title='Región')] if region_col in df_top.columns else [])
-    ).properties(
-        width=700,
-        height=500,
-        title=title
+    # Selectores
+    variable_input = alt.binding_select(
+        options=list(variables_disponibles.keys()),
+        labels=list(variables_disponibles.values()),
+        name='Variable a comparar: '
     )
     
-    return chart.interactive()
-
-
-# ============================================
-# VISUALIZACIÓN 4: SCATTER PLOT CORRELACIÓN
-# ============================================
-
-def plot_correlation_scatter(df, x_var, y_var, year=None):
-    """
-    Scatter plot: correlación entre dos variables
+    variable_selection = alt.selection_point(
+        fields=['variable'],
+        bind=variable_input,
+        value=list(variables_disponibles.keys())[0]
+    )
     
-    Args:
-        df (pd.DataFrame): Dataset
-        x_var (str): Variable eje X
-        y_var (str): Variable eje Y
-        year (int, optional): Año específico
-        
-    Returns:
-        alt.Chart: Gráfico de Altair
-    """
-    if x_var not in df.columns or y_var not in df.columns:
-        st.warning(f"⚠️ Variables {x_var} o {y_var} no encontradas")
-        return None
+    selector_continente = alt.selection_point(
+        fields=['Continente'],
+        bind='legend',
+        on='click'
+    )
     
-    df_viz = df.copy()
+    color_scale = alt.Scale(
+        domain=['África', 'América', 'Asia', 'Europa', 'Oceanía'],
+        range=['#e74c3c', '#3498db', '#f39c12', '#2ecc71', '#9b59b6']
+    )
     
-    # Filtrar por año si se especifica
-    if year and 'Year' in df.columns:
-        df_viz = df_viz[df_viz['Year'] == year]
-        title = f'{y_var} vs {x_var} ({year})'
-    else:
-        if 'Year' in df.columns:
-            df_viz = df_viz[df_viz['Year'] == df_viz['Year'].max()]
-        title = f'{y_var} vs {x_var}'
-    
-    # Remover nulos
-    df_viz = df_viz.dropna(subset=[x_var, y_var])
-    
-    # Selector de región interactivo
-    selection = alt.selection_point(fields=['Region'], bind='legend')
-    
-    chart = alt.Chart(df_viz).mark_circle(size=80).encode(
-        x=alt.X(f'{x_var}:Q', 
-                title=x_var.replace('_', ' ').title(),
-                scale=alt.Scale(zero=False)),
-        y=alt.Y(f'{y_var}:Q', 
-                title=y_var.replace('_', ' ').title(),
-                scale=alt.Scale(zero=False)),
+    # Scatter plot
+    scatter = alt.Chart(df_clean).mark_circle(
+        size=100,
+        opacity=0.7
+    ).encode(
+        x=alt.X('valor:Q',
+                scale=alt.Scale(zero=False),
+                axis=alt.Axis(
+                    titleFontSize=13,
+                    titleFontWeight='bold',
+                    labelFontSize=11
+                )),
+        y=alt.Y('Natalidad:Q',
+                scale=alt.Scale(zero=False),
+                axis=alt.Axis(
+                    title='Natalidad (nacimientos por 1000 hab)',
+                    titleFontSize=13,
+                    titleFontWeight='bold',
+                    labelFontSize=11
+                )),
         color=alt.condition(
-            selection,
-            alt.Color('Region:N', legend=alt.Legend(title='Región')),
+            selector_continente,
+            alt.Color('Continente:N',
+                      scale=color_scale,
+                      legend=alt.Legend(
+                          title='Continente (click para filtrar)',
+                          titleFontSize=12,
+                          titleFontWeight='bold',
+                          labelFontSize=11,
+                          orient='right'
+                      )),
             alt.value('lightgray')
         ),
-        opacity=alt.condition(selection, alt.value(0.8), alt.value(0.2)),
+        opacity=alt.condition(selector_continente, alt.value(0.8), alt.value(0.1)),
         tooltip=[
-            alt.Tooltip('Country Name:N', title='País'),
-            alt.Tooltip(f'{x_var}:Q', format='.2f'),
-            alt.Tooltip(f'{y_var}:Q', format='.2f'),
-            alt.Tooltip('Region:N', title='Región')
+            alt.Tooltip('Pais:N', title='País'),
+            alt.Tooltip('Continente:N', title='Continente'),
+            alt.Tooltip('Año:O', title='Año'),
+            alt.Tooltip('Natalidad:Q', title='Natalidad', format='.2f'),
+            alt.Tooltip('valor:Q', title='Valor Variable', format='.2f')
         ]
     ).add_params(
-        selection
-    ).properties(
-        width=700,
-        height=500,
-        title=title
+        variable_selection,
+        selector_continente
+    ).transform_filter(
+        variable_selection
     )
     
-    # Agregar línea de tendencia
-    trend = chart.transform_regression(
-        x_var, y_var
-    ).mark_line(color='red', strokeDash=[5, 5])
+    # Línea de regresión
+    regression = alt.Chart(df_reg_lines).mark_line(
+        color='black',
+        strokeWidth=3,
+        strokeDash=[5, 5]
+    ).encode(
+        x=alt.X('valor:Q'),
+        y=alt.Y('Natalidad_pred:Q', title='Natalidad')
+    ).add_params(
+        variable_selection
+    ).transform_filter(
+        variable_selection
+    )
     
-    return (chart + trend).interactive()
+    # Texto de correlación
+    correlation_text = alt.Chart(df_corr).mark_text(
+        align='left',
+        baseline='top',
+        dx=10,
+        dy=10,
+        fontSize=14,
+        fontWeight='bold',
+        color='darkred'
+    ).transform_filter(
+        variable_selection
+    ).transform_calculate(
+        correlation_label='"Correlación: " + format(datum.correlation, ".3f")'
+    ).encode(
+        text='correlation_label:N',
+        x=alt.value(10),
+        y=alt.value(10)
+    )
+    
+    # Combinar
+    chart = (scatter + regression + correlation_text).properties(
+        width=1080,
+        height=720,
+        title={
+            'text': 'Explorador de Correlaciones: Variables vs Natalidad',
+            'subtitle': [
+                'Selecciona una variable para explorar su relación con la natalidad',
+                'Click para filtrar por continente | Línea Negra: tendencia lineal'
+            ],
+            'fontSize': 16,
+            'fontWeight': 'bold',
+            'anchor': 'start',
+            'subtitleFontSize': 11,
+            'subtitleColor': 'gray'
+        }
+    ).configure_axis(
+        gridColor='lightgray',
+        gridOpacity=0.5
+    ).configure_view(
+        strokeWidth=0
+    ).interactive()
+    
+    return chart
 
 
 # ============================================
-# VISUALIZACIÓN 5: DISTRIBUCIÓN (HISTOGRAMA)
+# VIZ 3: DISTRIBUCIÓN POR CONTINENTE
 # ============================================
 
-def plot_distribution(df, variable='Birth Rate', bins=30):
+def viz_distribucion_continentes(df, year=None):
     """
-    Histograma: distribución de una variable
+    Visualización 3: Boxplot de distribución por continente
     
     Args:
-        df (pd.DataFrame): Dataset
-        variable (str): Variable a visualizar
-        bins (int): Número de bins
+        df: DataFrame procesado
+        year: Año específico (si None, usa el más reciente)
         
     Returns:
         alt.Chart: Gráfico de Altair
     """
-    if variable not in df.columns:
-        st.warning(f"⚠️ Variable {variable} no encontrada")
-        return None
+    # Usar año más reciente si no se especifica
+    if year is None:
+        year = int(df['Año'].max())
     
-    df_viz = df[[variable]].dropna()
+    # Filtrar datos
+    df_year = df[df['Año'] == year].copy()
+    df_year = df_year.dropna(subset=['Natalidad', 'Continente'])
     
-    chart = alt.Chart(df_viz).mark_bar().encode(
-        x=alt.X(f'{variable}:Q',
-                bin=alt.Bin(maxbins=bins),
-                title=variable.replace('_', ' ').title()),
-        y=alt.Y('count()',
-                title='Frecuencia'),
-        tooltip=['count()', f'{variable}:Q']
-    ).properties(
-        width=700,
-        height=400,
-        title=f'Distribución de {variable.replace("_", " ").title()}'
-    )
-    
-    # Agregar línea de media
-    mean_line = alt.Chart(df_viz).mark_rule(color='red', strokeWidth=2).encode(
-        x=f'mean({variable}):Q',
-        size=alt.value(2)
-    )
-    
-    return (chart + mean_line).interactive()
-
-
-# ============================================
-# VISUALIZACIÓN 6: MAPA DE CALOR TEMPORAL
-# ============================================
-
-def plot_temporal_heatmap(df, countries=None):
-    """
-    Mapa de calor: evolución temporal por país
-    
-    Args:
-        df (pd.DataFrame): Dataset
-        countries (list, optional): Lista de países a visualizar
-        
-    Returns:
-        alt.Chart: Gráfico de Altair
-    """
-    if 'Year' not in df.columns or 'Birth Rate' not in df.columns or 'Country Name' not in df.columns:
-        st.warning("⚠️ Columnas necesarias no encontradas")
-        return None
-    
-    df_viz = df.copy()
-    
-    # Filtrar países si se especifican
-    if countries:
-        df_viz = df_viz[df_viz['Country Name'].isin(countries)]
-    else:
-        # Tomar una muestra de países para que sea legible
-        top_countries = df_viz.groupby('Country Name')['Birth Rate'].mean().nlargest(15).index
-        df_viz = df_viz[df_viz['Country Name'].isin(top_countries)]
-    
-    chart = alt.Chart(df_viz).mark_rect().encode(
-        x=alt.X('Year:O', 
-                title='Año',
-                axis=alt.Axis(labelAngle=0)),
-        y=alt.Y('Country Name:N', 
-                title='País'),
-        color=alt.Color('Birth Rate:Q',
-                       scale=alt.Scale(scheme='blues'),
-                       legend=alt.Legend(title='Tasa de Natalidad')),
+    # Boxplot por continente
+    chart = alt.Chart(df_year).mark_boxplot(
+        size=50
+    ).encode(
+        x=alt.X('Continente:N',
+                axis=alt.Axis(
+                    title='Continente',
+                    titleFontSize=14,
+                    titleFontWeight='bold',
+                    labelFontSize=12,
+                    labelAngle=-45
+                )),
+        y=alt.Y('Natalidad:Q',
+                axis=alt.Axis(
+                    title='Tasa de Natalidad (por 1000 hab)',
+                    titleFontSize=14,
+                    titleFontWeight='bold',
+                    labelFontSize=11
+                ),
+                scale=alt.Scale(zero=False)),
+        color=alt.Color('Continente:N',
+                       scale=alt.Scale(
+                           domain=['África', 'América', 'Asia', 'Europa', 'Oceanía'],
+                           range=['#e74c3c', '#3498db', '#f39c12', '#2ecc71', '#9b59b6']
+                       ),
+                       legend=None),
         tooltip=[
-            alt.Tooltip('Country Name:N', title='País'),
-            alt.Tooltip('Year:O', title='Año'),
-            alt.Tooltip('Birth Rate:Q', title='Tasa de Natalidad', format='.2f')
+            alt.Tooltip('Continente:N', title='Continente'),
+            alt.Tooltip('min(Natalidad):Q', title='Mínimo', format='.2f'),
+            alt.Tooltip('q1(Natalidad):Q', title='Q1', format='.2f'),
+            alt.Tooltip('median(Natalidad):Q', title='Mediana', format='.2f'),
+            alt.Tooltip('q3(Natalidad):Q', title='Q3', format='.2f'),
+            alt.Tooltip('max(Natalidad):Q', title='Máximo', format='.2f')
         ]
     ).properties(
-        width=700,
-        height=400,
-        title='Evolución Temporal de Natalidad por País'
+        width=800,
+        height=500,
+        title={
+            'text': f'Distribución de Natalidad por Continente ({year})',
+            'subtitle': 'Boxplot mostrando mediana, cuartiles y valores atípicos',
+            'fontSize': 16,
+            'fontWeight': 'bold',
+            'anchor': 'start',
+            'subtitleFontSize': 12,
+            'subtitleColor': 'gray'
+        }
+    ).configure_axis(
+        gridColor='lightgray',
+        gridOpacity=0.5
+    ).configure_view(
+        strokeWidth=0
     )
     
-    return chart.interactive()
+    return chart
 
 
 # ============================================
 # UTILIDADES
 # ============================================
 
-def get_numeric_columns(df):
-    """Retorna lista de columnas numéricas"""
-    return df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+def get_available_visualizations():
+    """Retorna lista de visualizaciones disponibles"""
+    return [
+        {
+            'id': 'evolucion_temporal',
+            'nombre': 'Evolución Temporal por Región',
+            'descripcion': 'Líneas interactivas mostrando la evolución de natalidad por región geográfica',
+            'funcion': viz_evolucion_temporal_regiones
+        },
+        {
+            'id': 'correlaciones',
+            'nombre': 'Explorador de Correlaciones',
+            'descripcion': 'Scatter plot interactivo para explorar relaciones entre variables',
+            'funcion': viz_correlaciones_interactivas
+        },
+        {
+            'id': 'distribucion',
+            'nombre': 'Distribución por Continente',
+            'descripcion': 'Boxplot mostrando la distribución de natalidad por continente',
+            'funcion': viz_distribucion_continentes
+        }
+    ]
 
 
 if __name__ == "__main__":
     print("✅ Módulo de visualizaciones cargado correctamente")
+    print(f"📊 Visualizaciones disponibles: {len(get_available_visualizations())}")
