@@ -10,7 +10,7 @@ from src.pipeline import ejecutar_pipeline_completo, get_resumen_pipeline, carga
 from src.visualizations import (
     viz_evolucion_temporal_regiones,
     viz_correlaciones_interactivas,
-    viz_distribucion_continentes,
+    viz_mapa_mundial_natalidad,
     get_available_visualizations
 )
 
@@ -223,21 +223,19 @@ elif pagina == "📊 Visualizaciones":
     # Generar y mostrar visualización
     with st.spinner("🎨 Generando visualización..."):
         try:
+            chart = None  # Inicializar
+            
             if viz_actual['id'] == 'evolucion_temporal':
                 chart = viz_evolucion_temporal_regiones(df)
             elif viz_actual['id'] == 'correlaciones':
                 chart = viz_correlaciones_interactivas(df)
-            elif viz_actual['id'] == 'distribucion':
-                # Selector de año para distribución
-                año_viz = st.slider(
-                    "Selecciona el año:",
-                    min_value=int(df['Año'].min()),
-                    max_value=int(df['Año'].max()),
-                    value=int(df['Año'].max())
-                )
-                chart = viz_distribucion_continentes(df, year=año_viz)
+            elif viz_actual['id'] == 'mapa_mundial':
+                chart = viz_mapa_mundial_natalidad(df)
             
-            st.altair_chart(chart, use_container_width=True)
+            if chart is not None:
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.error("❌ No se pudo generar el gráfico")
             
         except Exception as e:
             st.error(f"❌ Error al generar la visualización: {e}")

@@ -125,4 +125,4 @@ Para preguntas o sugerencias, abre un issue en GitHub.
 
 ---
 
-⭐ Si te gusta este proyecto, dale una estrella en GitHub!
+⭐ Si te gusta este proyecto, dame una estrella en GitHub!
