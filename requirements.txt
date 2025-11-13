@@ -1,18 +1,20 @@
-# Streamlit
-streamlit>=1.28.0
+# ============================================
+# REQUIREMENTS - Predicción de Natalidad Global
+# ============================================
 
-# Data Processing
+# Core Data Science
 pandas>=2.0.0
 numpy>=1.24.0
 
-# Visualization
-altair>=5.0.0
-plotly>=5.14.0
-
 # Machine Learning
 scikit-learn>=1.3.0
-xgboost>=1.7.0
+xgboost>=2.0.0
 
-# Utilities
-openpyxl>=3.1.0  # Si usas Excel
-joblib>=1.3.0    # Para guardar modelos
+# Streamlit y Visualización
+streamlit>=1.28.0
+altair>=5.0.0
+vega-datasets>=0.9.0
+
+# Utilidades
+joblib>=1.3.0
+

@@ -367,13 +367,13 @@ def viz_correlaciones_interactivas(df):
 
 
 # ============================================
-# VIZ 3: MAPA MUNDIAL CON SLIDER (DEL NOTEBOOK)
+# VIZ 3: MAPA MUNDIAL CON SLIDER (CORREGIDO)
 # ============================================
 
 def viz_mapa_mundial_natalidad(df):
     """
     Visualización 3: Mapa mundial interactivo con slider de años
-    EXACTAMENTE como el notebook
+    CORREGIDO - Exactamente como el notebook
     
     Args:
         df: DataFrame procesado (df_con_regiones del notebook)
@@ -381,10 +381,7 @@ def viz_mapa_mundial_natalidad(df):
     Returns:
         alt.Chart: Gráfico de Altair con mapa mundial
     """
-    import altair as alt
     from vega_datasets import data
-    
-    alt.data_transformers.disable_max_rows()
     
     # Cargar geodata
     countries_url = alt.topo_feature(data.world_110m.url, 'countries')
@@ -438,11 +435,22 @@ def viz_mapa_mundial_natalidad(df):
     }
     
     # Agregar ID al dataset
-    df_con_regiones = df.copy()
-    df_con_regiones['id'] = df_con_regiones['Pais'].map(pais_a_id)
+    df_mapa = df.copy()
+    df_mapa['id'] = df_mapa['Pais'].map(pais_a_id)
     
-    # Filtrar solo países con ID
-    df_mapa = df_con_regiones[df_con_regiones['id'].notna()].copy()
+    # Filtrar solo países con ID (que tienen geometría)
+    df_mapa = df_mapa[df_mapa['id'].notna()].copy()
+    
+    # Asegurar que tenemos las columnas necesarias
+    columnas_necesarias = ['id', 'Pais', 'Año', 'Natalidad']
+    
+    # Agregar Continente y Region si existen
+    if 'Continente' in df_mapa.columns:
+        columnas_necesarias.append('Continente')
+    if 'Region' in df_mapa.columns:
+        columnas_necesarias.append('Region')
+    
+    df_mapa = df_mapa[columnas_necesarias].copy()
     
     # Calcular estadísticas por año
     stats_por_año = df_mapa.groupby('Año')['Natalidad'].agg(['mean', 'min', 'max']).reset_index()
@@ -486,43 +494,30 @@ def viz_mapa_mundial_natalidad(df):
         height=600
     )
     
-    # Crear capas por año (como en el notebook)
-    data_layers = []
-    for año in años_únicos:
-        df_año = df_mapa[df_mapa['Año'] == año][['id', 'Pais', 'Continente', 'Region', 'Año', 'Natalidad']].copy()
-        
-        layer = alt.Chart(countries_url).mark_geoshape(
-            stroke='white',
-            strokeWidth=0.5
-        ).encode(
-            color=alt.Color(
-                'Natalidad:Q',
-                scale=color_scale,
-                legend=None
-            ),
-            tooltip=[
-                alt.Tooltip('Pais:N', title='País'),
-                alt.Tooltip('Continente:N', title='Continente'),
-                alt.Tooltip('Region:N', title='Región'),
-                alt.Tooltip('Natalidad:Q', title='Natalidad', format='.2f')
-            ]
-        ).transform_lookup(
-            lookup='id',
-            from_=alt.LookupData(
-                data=df_año,
-                key='id',
-                fields=['Pais', 'Continente', 'Region', 'Natalidad']
-            )
-        ).transform_filter(
-            f'year == {año}'
-        ).project(
-            type='naturalEarth1'
-        )
-        
-        data_layers.append(layer)
+    # Crear UNA SOLA capa con todos los años
+    # Altair filtrará internamente con transform_filter
+    campos_lookup = ['Pais', 'Natalidad']
+    if 'Continente' in columnas_necesarias:
+        campos_lookup.append('Continente')
+    if 'Region' in columnas_necesarias:
+        campos_lookup.append('Region')
     
-    # Capa dummy para leyenda
-    legend_dummy = alt.Chart(df_mapa).mark_circle(opacity=0).encode(
+    # Tooltip dinámico según columnas disponibles
+    tooltip_config = [
+        alt.Tooltip('Pais:N', title='País'),
+        alt.Tooltip('Natalidad:Q', title='Natalidad', format='.2f')
+    ]
+    
+    if 'Continente' in columnas_necesarias:
+        tooltip_config.insert(1, alt.Tooltip('Continente:N', title='Continente'))
+    if 'Region' in columnas_necesarias:
+        tooltip_config.insert(2, alt.Tooltip('Region:N', title='Región'))
+    
+    # Capa del mapa con datos
+    mapa_datos = alt.Chart(countries_url).mark_geoshape(
+        stroke='white',
+        strokeWidth=0.5
+    ).encode(
         color=alt.Color(
             'Natalidad:Q',
             scale=color_scale,
@@ -530,14 +525,26 @@ def viz_mapa_mundial_natalidad(df):
                 title='Natalidad (nacimientos/1000 hab)',
                 titleFontSize=12,
                 titleFontWeight='bold',
-                labelFontSize=10
+                labelFontSize=10,
+                orient='right'
             )
+        ),
+        tooltip=tooltip_config
+    ).transform_lookup(
+        lookup='id',
+        from_=alt.LookupData(
+            data=df_mapa,
+            key='id',
+            fields=campos_lookup + ['Año']
         )
+    ).transform_filter(
+        alt.datum.Año == year_param
+    ).project(
+        type='naturalEarth1'
     )
     
-    # Combinar todas las capas
-    all_layers = [background] + [legend_dummy] + data_layers
-    mapa_completo = alt.layer(*all_layers).properties(
+    # Combinar capas
+    mapa_completo = (background + mapa_datos).properties(
         width=1080,
         height=600
     ).add_params(
@@ -556,7 +563,7 @@ def viz_mapa_mundial_natalidad(df):
     ).encode(
         text='label:N'
     ).transform_filter(
-        'datum.Año == year'
+        alt.datum.Año == year_param
     ).transform_calculate(
         label='toString(datum.Año) + " | Media Global: " + format(datum.mean, ".1f") + " | Rango: [" + format(datum.min, ".1f") + " - " + format(datum.max, ".1f") + "]"'
     ).properties(
@@ -582,6 +589,7 @@ def viz_mapa_mundial_natalidad(df):
     )
     
     return chart
+
 
 
 # ============================================
@@ -681,6 +689,12 @@ def get_available_visualizations():
             'nombre': 'Explorador de Correlaciones',
             'descripcion': 'Scatter plot interactivo para explorar relaciones entre variables',
             'funcion': viz_correlaciones_interactivas
+        },
+        {
+            'id': 'mapa_mundial',
+            'nombre': 'Mapa Mundial Interactivo',
+            'descripcion': 'Mapa coroplético mundial con slider temporal de natalidad por país',
+            'funcion': viz_mapa_mundial_natalidad
         },
         {
             'id': 'distribucion',

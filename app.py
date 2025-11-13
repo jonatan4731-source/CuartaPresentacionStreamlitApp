@@ -6,12 +6,23 @@ Basada en CuartaPresentacion.ipynb
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
+
+# Importaciones corregidas
 from src.pipeline import ejecutar_pipeline_completo, get_resumen_pipeline, cargar_datos
 from src.visualizations import (
     viz_evolucion_temporal_regiones,
     viz_correlaciones_interactivas,
     viz_mapa_mundial_natalidad,
+    viz_distribucion_continentes,
     get_available_visualizations
+)
+from src.model import (
+    load_model, 
+    load_scaler, 
+    predict_birth_rate,
+    interpret_prediction,
+    get_prediction_category
 )
 
 # ============================================
@@ -19,7 +30,6 @@ from src.visualizations import (
 # ============================================
 st.set_page_config(
     page_title="Predicción de Natalidad Global",
-    page_icon="👶",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -41,6 +51,9 @@ st.markdown("""
         border-radius: 10px;
         border-left: 5px solid #1f77b4;
     }
+    .stAlert {
+        border-radius: 10px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -51,7 +64,20 @@ st.markdown("""
 @st.cache_data
 def cargar_datos_app():
     """Carga y procesa los datos con cache de Streamlit"""
-    return ejecutar_pipeline_completo('data/raw/merged_dataset.csv')
+    # IMPORTANTE: Ruta al CSV ORIGINAL (merged_dataset.csv)
+    ruta = 'data/raw/merged_dataset.csv'
+    
+    # Verificar si existe
+    if not os.path.exists(ruta):
+        st.error(f"❌ No se encontró el archivo: {ruta}")
+        st.info("💡 Asegúrate de tener el archivo merged_dataset.csv en la carpeta data/raw/")
+        return None
+    
+    # Ejecutar pipeline completo (limpieza + features + regiones)
+    df_procesado = ejecutar_pipeline_completo(ruta, umbral_faltantes=60)
+    
+    return df_procesado
+
 
 # ============================================
 # SIDEBAR: NAVEGACIÓN
@@ -72,6 +98,7 @@ st.sidebar.markdown("""
 **Estudiante:** Ingeniería en Sistemas  
 **Dataset:** Banco Mundial (2000-2023)  
 **Última actualización:** Nov 2024
+**Grupo: Grupo 07
 """)
 
 # ============================================
@@ -80,6 +107,11 @@ st.sidebar.markdown("""
 
 with st.spinner("🔄 Cargando y procesando datos..."):
     df = cargar_datos_app()
+    
+    if df is None:
+        st.stop()  # Detener ejecución si no hay datos
+    
+    # Cargar dataset original solo para el resumen
     df_original = cargar_datos('data/raw/merged_dataset.csv')
     resumen = get_resumen_pipeline(df_original, df)
 
@@ -88,7 +120,7 @@ with st.spinner("🔄 Cargando y procesando datos..."):
 # ============================================
 
 if pagina == "🏠 Inicio":
-    st.title("👶 Predicción de Tasas de Natalidad Global")
+    st.title("Predicción de Tasas de Natalidad Global")
     st.markdown("---")
     
     # Introducción
@@ -223,7 +255,7 @@ elif pagina == "📊 Visualizaciones":
     # Generar y mostrar visualización
     with st.spinner("🎨 Generando visualización..."):
         try:
-            chart = None  # Inicializar
+            chart = None
             
             if viz_actual['id'] == 'evolucion_temporal':
                 chart = viz_evolucion_temporal_regiones(df)
@@ -231,6 +263,8 @@ elif pagina == "📊 Visualizaciones":
                 chart = viz_correlaciones_interactivas(df)
             elif viz_actual['id'] == 'mapa_mundial':
                 chart = viz_mapa_mundial_natalidad(df)
+            elif viz_actual['id'] == 'distribucion':
+                chart = viz_distribucion_continentes(df)
             
             if chart is not None:
                 st.altair_chart(chart, use_container_width=True)
@@ -239,7 +273,8 @@ elif pagina == "📊 Visualizaciones":
             
         except Exception as e:
             st.error(f"❌ Error al generar la visualización: {e}")
-            st.exception(e)
+            with st.expander("Ver detalles del error"):
+                st.exception(e)
     
     # Tips de interacción
     with st.expander("💡 Tips de interacción"):
@@ -259,39 +294,218 @@ elif pagina == "🤖 Predictor":
     st.title("🤖 Predictor de Natalidad")
     st.markdown("---")
     
-    st.info("🚧 **Sección en desarrollo**")
-    st.markdown("""
-    ### Funcionalidad Planificada
+    # Verificar si existen los modelos
+    modelo_existe = os.path.exists('models/best_model.pkl')
+    scaler_existe = os.path.exists('models/scaler.pkl')
     
-    En esta sección podrás:
-    1. **Cargar un modelo entrenado** (Random Forest optimizado)
-    2. **Ingresar valores** para variables socioeconómicas
-    3. **Obtener una predicción** de tasa de natalidad
-    4. **Ver interpretación** del resultado
-    5. **Comparar** con promedios regionales/globales
-    
-    #### Para completar esta sección necesitas:
-    - Exportar el modelo entrenado del notebook (`best_model.pkl`)
-    - Exportar el scaler (`scaler.pkl`)
-    - Definir las features exactas usadas en el modelo
-    """)
-    
-    # Placeholder para inputs
-    st.markdown("### ⚙️ Parámetros de Predicción (Preview)")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.number_input("PIB per cápita (USD)", value=25000, step=1000, disabled=True)
-        st.number_input("Esperanza de Vida (años)", value=75, step=1, disabled=True)
-        st.number_input("Urbanización (%)", value=60, step=5, disabled=True)
-    
-    with col2:
-        st.number_input("Acceso a Educación (%)", value=85, step=5, disabled=True)
-        st.number_input("Gasto en Salud (% PIB)", value=5.0, step=0.5, disabled=True)
-        st.number_input("Desempleo (%)", value=7.0, step=0.5, disabled=True)
-    
-    st.button("🔮 Realizar Predicción", disabled=True, help="Funcionalidad en desarrollo")
+    if not modelo_existe or not scaler_existe:
+        st.warning("⚠️ **Modelos no encontrados**")
+        st.markdown("""
+        ### 🔧 Configuración Necesaria
+        
+        Para usar el predictor, necesitas:
+        
+        1. **Entrenar el modelo** ejecutando el notebook `CuartaPresentacion.ipynb`
+        2. **Exportar el modelo** con este código al final del notebook:
+        
+        ```python
+        import joblib
+        
+        # Guardar modelo
+        joblib.dump(best_rf, 'models/best_model.pkl')
+        
+        # Guardar scaler (del pipeline)
+        joblib.dump(pipeline_info['etapa7_preprocesamiento']['scaler'], 'models/scaler.pkl')
+        
+        # Guardar imputer
+        joblib.dump(pipeline_info['etapa7_preprocesamiento']['imputer'], 'models/imputer.pkl')
+        
+        print("✅ Modelos guardados!")
+        ```
+        
+        3. **Copiar los archivos** a la carpeta `models/` de esta app
+        """)
+        
+        st.info("📝 **Tip:** Crea la carpeta `models/` si no existe en la raíz del proyecto")
+        
+    else:
+        # Cargar modelo y scaler
+        with st.spinner("Cargando modelo..."):
+            model = load_model()
+            scaler = load_scaler()
+        
+        if model is None or scaler is None:
+            st.error("❌ Error al cargar el modelo o scaler")
+            st.stop()
+        
+        st.success("✅ Modelo cargado correctamente")
+        
+        st.markdown("### 🎛️ Parámetros de Predicción")
+        st.markdown("Ingresa los valores de las variables socioeconómicas:")
+        
+        # Crear formulario de inputs
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 📊 Variables Económicas")
+            pib_per_capita = st.number_input(
+                "PIB per cápita (USD)", 
+                min_value=0, 
+                max_value=200000, 
+                value=25000, 
+                step=1000,
+                help="Producto Interno Bruto dividido por la población"
+            )
+            
+            ingreso_medio = st.number_input(
+                "Ingreso Medio (USD)", 
+                min_value=0, 
+                max_value=200000, 
+                value=20000, 
+                step=1000
+            )
+            
+            desempleo = st.slider(
+                "Desempleo (%)", 
+                min_value=0.0, 
+                max_value=30.0, 
+                value=7.0, 
+                step=0.5
+            )
+            
+            urbanizacion = st.slider(
+                "Urbanización (%)", 
+                min_value=0.0, 
+                max_value=100.0, 
+                value=60.0, 
+                step=5.0
+            )
+            
+            st.markdown("#### 👩‍🎓 Variables de Educación")
+            acceso_educacion = st.slider(
+                "Acceso a Educación (%)", 
+                min_value=0.0, 
+                max_value=100.0, 
+                value=85.0, 
+                step=5.0
+            )
+            
+            matricula_primaria = st.slider(
+                "Matrícula Primaria (%)", 
+                min_value=0.0, 
+                max_value=100.0, 
+                value=90.0, 
+                step=5.0
+            )
+        
+        with col2:
+            st.markdown("#### 🏥 Variables de Salud")
+            esperanza_vida = st.number_input(
+                "Esperanza de Vida (años)", 
+                min_value=40, 
+                max_value=90, 
+                value=75, 
+                step=1
+            )
+            
+            gasto_salud = st.slider(
+                "Gasto en Salud (% PIB)", 
+                min_value=0.0, 
+                max_value=20.0, 
+                value=5.0, 
+                step=0.5
+            )
+            
+            acceso_agua = st.slider(
+                "Acceso a Agua Potable (%)", 
+                min_value=0.0, 
+                max_value=100.0, 
+                value=85.0, 
+                step=5.0
+            )
+            
+            st.markdown("#### 👥 Variables de Género")
+            participacion_laboral_fem = st.slider(
+                "Participación Laboral Femenina (%)", 
+                min_value=0.0, 
+                max_value=100.0, 
+                value=50.0, 
+                step=5.0
+            )
+            
+            mujeres_parlamento = st.slider(
+                "Mujeres en Parlamento (%)", 
+                min_value=0.0, 
+                max_value=100.0, 
+                value=25.0, 
+                step=5.0
+            )
+        
+        st.markdown("---")
+        
+        # Botón de predicción
+        if st.button("🔮 Realizar Predicción", type="primary", use_container_width=True):
+            with st.spinner("Calculando predicción..."):
+                # Preparar input (AJUSTAR según las features exactas de tu modelo)
+                input_features = {
+                    'PIB_per_capita': pib_per_capita,
+                    'IngresoMedio': ingreso_medio,
+                    'Desempleo': desempleo,
+                    'Urbanizacion': urbanizacion,
+                    'AccesoEducacion': acceso_educacion,
+                    'MatriculacionPrimaria': matricula_primaria,
+                    'EsperanzaVida': esperanza_vida,
+                    'GastoSalud': gasto_salud,
+                    'AccesoAguaPotable': acceso_agua,
+                    'TasaParticipacionLaboralFemenina': participacion_laboral_fem,
+                    'MujeresParlamento': mujeres_parlamento,
+                    # Agregar features temporales por defecto
+                    'AñosDesde2000': 24,  # 2024
+                    'Decada': 2020,
+                    'CrisisEconomica2008': 0,
+                    'PandemiaCOVID': 0
+                }
+                
+                # Realizar predicción
+                prediction = predict_birth_rate(model, scaler, input_features)
+                
+                if prediction is not None:
+                    st.markdown("---")
+                    st.markdown("### 📊 Resultado de la Predicción")
+                    
+                    # Mostrar predicción principal
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric(
+                            "Tasa de Natalidad Predicha",
+                            f"{prediction:.2f}",
+                            help="Nacimientos por 1000 habitantes"
+                        )
+                    
+                    with col2:
+                        categoria = get_prediction_category(prediction)
+                        st.metric(
+                            "Categoría",
+                            categoria
+                        )
+                    
+                    with col3:
+                        # Calcular promedio global del último año
+                        promedio_global = df[df['Año'] == df['Año'].max()]['Natalidad'].mean()
+                        diferencia = prediction - promedio_global
+                        st.metric(
+                            "vs Promedio Global",
+                            f"{diferencia:+.2f}",
+                            f"{(diferencia/promedio_global)*100:+.1f}%"
+                        )
+                    
+                    # Interpretación
+                    st.markdown("### 💬 Interpretación")
+                    interpretacion = interpret_prediction(prediction, promedio_global)
+                    st.markdown(interpretacion)
+                else:
+                    st.error("❌ Error al realizar la predicción")
 
 # ============================================
 # PÁGINA: DATOS
