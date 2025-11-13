@@ -2456,9 +2456,9 @@ chart1 = visualizacion_evolucion_temporal(
 
 chart1   # Para mostrarlo en pantalla
 
-!pip install vegafusion vegafusion-python-embed
+#!pip install vegafusion vegafusion-python-embed
 
-!pip install "vl-convert-python>=1.6.0"
+#!pip install "vl-convert-python>=1.6.0"
 
 import altair as alt
 
