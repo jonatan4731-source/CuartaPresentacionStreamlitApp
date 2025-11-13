@@ -1,15 +1,15 @@
 """
 Funciones del modelo de Machine Learning
 Basado en CuartaPresentacion.ipynb
+VERSIÓN MEJORADA PARA PREDICTOR INTERACTIVO
 """
 
 import pandas as pd
 import numpy as np
 import joblib
 import streamlit as st
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
-import xgboost as xgb
 
 
 # ============================================
@@ -29,7 +29,11 @@ def load_model(model_path='models/best_model.pkl'):
     """
     try:
         model = joblib.load(model_path)
+        print(f"✅ Modelo cargado: {type(model).__name__}")
         return model
+    except FileNotFoundError:
+        st.error(f"❌ No se encontró el archivo: {model_path}")
+        return None
     except Exception as e:
         st.error(f"❌ Error al cargar modelo: {e}")
         return None
@@ -48,17 +52,47 @@ def load_scaler(scaler_path='models/scaler.pkl'):
     """
     try:
         scaler = joblib.load(scaler_path)
+        print(f"✅ Scaler cargado: {type(scaler).__name__}")
         return scaler
+    except FileNotFoundError:
+        st.error(f"❌ No se encontró el archivo: {scaler_path}")
+        return None
     except Exception as e:
         st.error(f"❌ Error al cargar scaler: {e}")
         return None
+
+
+@st.cache_resource
+def load_imputer(imputer_path='models/imputer.pkl'):
+    """
+    Carga el imputer con cache
+    
+    Args:
+        imputer_path (str): Ruta al imputer guardado
+        
+    Returns:
+        imputer: Imputer cargado
+    """
+    try:
+        imputer = joblib.load(imputer_path)
+        print(f"✅ Imputer cargado: {type(imputer).__name__}")
+        return imputer
+    except FileNotFoundError:
+        st.warning(f"⚠️ No se encontró el archivo: {imputer_path}")
+        # Retornar un imputer por defecto
+        from sklearn.impute import SimpleImputer
+        return SimpleImputer(strategy='median')
+    except Exception as e:
+        st.error(f"❌ Error al cargar imputer: {e}")
+        from sklearn.impute import SimpleImputer
+        return SimpleImputer(strategy='median')
 
 
 # ============================================
 # PREDICCIÓN
 # ============================================
 
-def predict_birth_rate(model, scaler, input_features):
+def predict_birth_rate(model, scaler, input_features, imputer=None):
     """
     Realiza predicción de tasa de natalidad
     
@@ -66,6 +100,7 @@ def predict_birth_rate(model, scaler, input_features):
         model: Modelo entrenado
         scaler: Scaler para normalización
         input_features (dict): Diccionario con features de input
+        imputer: Imputer para valores faltantes (opcional)
         
     Returns:
         float: Predicción de tasa de natalidad
@@ -74,8 +109,14 @@ def predict_birth_rate(model, scaler, input_features):
         # Convertir input a DataFrame
         input_df = pd.DataFrame([input_features])
         
+        # Imputar valores faltantes si hay imputer
+        if imputer is not None:
+            input_imputed = imputer.transform(input_df)
+        else:
+            input_imputed = input_df.values
+        
         # Escalar features
-        input_scaled = scaler.transform(input_df)
+        input_scaled = scaler.transform(input_imputed)
         
         # Predecir
         prediction = model.predict(input_scaled)[0]
@@ -87,31 +128,66 @@ def predict_birth_rate(model, scaler, input_features):
         return None
 
 
-def predict_with_confidence(model, scaler, input_features):
+def predict_with_confidence(model, scaler, input_features, imputer=None, confidence=0.95):
     """
-    Realiza predicción con intervalo de confianza (si el modelo lo soporta)
+    Realiza predicción con intervalo de confianza estimado
     
     Args:
         model: Modelo entrenado
         scaler: Scaler para normalización
         input_features (dict): Diccionario con features
+        imputer: Imputer para valores faltantes (opcional)
+        confidence: Nivel de confianza (default 0.95)
         
     Returns:
         tuple: (predicción, intervalo_inferior, intervalo_superior)
     """
-    prediction = predict_birth_rate(model, scaler, input_features)
+    prediction = predict_birth_rate(model, scaler, input_features, imputer)
     
     if prediction is None:
         return None, None, None
     
-    # Calcular intervalo aproximado (puedes ajustar según tu modelo)
-    # Esto es un placeholder - idealmente usarías el error del modelo de validación
-    error_margin = 2.5  # RMSE aproximado de tu modelo
+    # Calcular intervalo aproximado basado en RMSE del modelo
+    # Asumimos un RMSE de 2.5 (ajustar según tu modelo real)
+    error_margin = 2.5 * 1.96  # 95% de confianza (1.96 * std)
     
     lower_bound = max(0, prediction - error_margin)
     upper_bound = prediction + error_margin
     
     return prediction, lower_bound, upper_bound
+
+
+def predict_batch(model, scaler, X_data, imputer=None):
+    """
+    Realiza predicciones en batch para múltiples observaciones
+    
+    Args:
+        model: Modelo entrenado
+        scaler: Scaler
+        X_data: DataFrame o array con features
+        imputer: Imputer (opcional)
+        
+    Returns:
+        np.array: Array de predicciones
+    """
+    try:
+        # Imputar si hay imputer
+        if imputer is not None:
+            X_imputed = imputer.transform(X_data)
+        else:
+            X_imputed = X_data
+        
+        # Escalar
+        X_scaled = scaler.transform(X_imputed)
+        
+        # Predecir
+        predictions = model.predict(X_scaled)
+        
+        return predictions
+        
+    except Exception as e:
+        st.error(f"❌ Error en predicción batch: {e}")
+        return None
 
 
 # ============================================
@@ -124,7 +200,7 @@ def evaluate_model(model, X_test, y_test):
     
     Args:
         model: Modelo entrenado
-        X_test: Features de test
+        X_test: Features de test (ya escaladas)
         y_test: Target de test
         
     Returns:
@@ -254,38 +330,10 @@ def get_prediction_category(prediction):
 
 
 # ============================================
-# COMPARACIONES
-# ============================================
-
-def compare_with_similar_countries(prediction, df, input_features, n=5):
-    """
-    Encuentra países similares según features de input
-    
-    Args:
-        prediction (float): Predicción realizada
-        df (pd.DataFrame): Dataset completo
-        input_features (dict): Features del input
-        n (int): Número de países similares a mostrar
-        
-    Returns:
-        pd.DataFrame: Países similares con sus tasas de natalidad
-    """
-    # TODO: Implementar lógica de similitud
-    # Esto requeriría calcular distancias euclidianas o similares
-    # Por ahora retornamos un placeholder
-    
-    return pd.DataFrame({
-        'País': ['Placeholder 1', 'Placeholder 2'],
-        'Tasa de Natalidad': [prediction - 1, prediction + 1],
-        'Similitud': [0.95, 0.92]
-    })
-
-
-# ============================================
 # SIMULACIONES
 # ============================================
 
-def simulate_scenarios(model, scaler, base_features, variable_to_change, values):
+def simulate_scenarios(model, scaler, base_features, variable_to_change, values, imputer=None):
     """
     Simula diferentes escenarios cambiando una variable
     
@@ -295,6 +343,7 @@ def simulate_scenarios(model, scaler, base_features, variable_to_change, values)
         base_features (dict): Features base
         variable_to_change (str): Variable a modificar
         values (list): Lista de valores a probar
+        imputer: Imputer (opcional)
         
     Returns:
         pd.DataFrame: Resultados de la simulación
@@ -307,7 +356,7 @@ def simulate_scenarios(model, scaler, base_features, variable_to_change, values)
         scenario_features[variable_to_change] = value
         
         # Predecir
-        prediction = predict_birth_rate(model, scaler, scenario_features)
+        prediction = predict_birth_rate(model, scaler, scenario_features, imputer)
         
         if prediction is not None:
             results.append({
@@ -352,5 +401,20 @@ def save_scaler(scaler, filepath='models/scaler.pkl'):
         print(f"❌ Error al guardar scaler: {e}")
 
 
+def save_imputer(imputer, filepath='models/imputer.pkl'):
+    """
+    Guarda el imputer
+    
+    Args:
+        imputer: Imputer a guardar
+        filepath (str): Ruta de destino
+    """
+    try:
+        joblib.dump(imputer, filepath)
+        print(f"✅ Imputer guardado en: {filepath}")
+    except Exception as e:
+        print(f"❌ Error al guardar imputer: {e}")
+
+
 if __name__ == "__main__":
-    print(" Módulo de modelo cargado correctamente")
+    print("✅ Módulo de modelo cargado correctamente")

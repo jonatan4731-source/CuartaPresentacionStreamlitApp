@@ -309,7 +309,7 @@ def viz_correlaciones_interactivas(df):
     
     # Línea de regresión
     regression = alt.Chart(df_reg_lines).mark_line(
-        color='black',
+        color='white',
         strokeWidth=3,
         strokeDash=[5, 5]
     ).encode(
@@ -373,7 +373,7 @@ def viz_correlaciones_interactivas(df):
 def viz_mapa_mundial_natalidad(df):
     """
     Visualización 3: Mapa mundial interactivo con slider de años
-    CORREGIDO - Exactamente como el notebook
+    VERSIÓN FUNCIONAL DEL NOTEBOOK - Usa múltiples capas por año
     
     Args:
         df: DataFrame procesado (df_con_regiones del notebook)
@@ -388,28 +388,29 @@ def viz_mapa_mundial_natalidad(df):
     
     # Mapeo de países a IDs (COMPLETO del notebook)
     pais_a_id = {
+        # Originales
         'Afghanistan': 4, 'Albania': 8, 'Algeria': 12, 'Angola': 24,
         'Argentina': 32, 'Armenia': 51, 'Australia': 36, 'Austria': 40,
-        'Azerbaijan': 31, 'Bahamas, The': 44, 'Bangladesh': 50, 'Belarus': 112,
+        'Azerbaijan': 31, 'Bahamas': 44, 'Bangladesh': 50, 'Belarus': 112,
         'Belgium': 56, 'Belize': 84, 'Benin': 204, 'Bhutan': 64,
         'Bolivia': 68, 'Bosnia and Herzegovina': 70, 'Botswana': 72,
-        'Brazil': 76, 'Brunei Darussalam': 96, 'Bulgaria': 100, 'Burkina Faso': 854,
+        'Brazil': 76, 'Brunei': 96, 'Bulgaria': 100, 'Burkina Faso': 854,
         'Burundi': 108, 'Cambodia': 116, 'Cameroon': 120, 'Canada': 124,
         'Central African Republic': 140, 'Chad': 148, 'Chile': 152,
-        'China': 156, 'Colombia': 170, 'Congo, Rep.': 178, 'Costa Rica': 188,
-        'Croatia': 191, 'Cuba': 192, 'Cyprus': 196, 'Czechia': 203,
-        'Congo, Dem. Rep.': 180, 'Denmark': 208, 'Djibouti': 262,
-        'Dominican Republic': 214, 'Ecuador': 218, 'Egypt, Arab Rep.': 818,
+        'China': 156, 'Colombia': 170, 'Congo': 178, 'Costa Rica': 188,
+        'Croatia': 191, 'Cuba': 192, 'Cyprus': 196, 'Czech Republic': 203,
+        'Democratic Republic of Congo': 180, 'Denmark': 208, 'Djibouti': 262,
+        'Dominican Republic': 214, 'Ecuador': 218, 'Egypt': 818,
         'El Salvador': 222, 'Equatorial Guinea': 226, 'Eritrea': 232,
         'Estonia': 233, 'Ethiopia': 231, 'Fiji': 242, 'Finland': 246,
-        'France': 250, 'Gabon': 266, 'Gambia, The': 270, 'Georgia': 268,
+        'France': 250, 'Gabon': 266, 'Gambia': 270, 'Georgia': 268,
         'Germany': 276, 'Ghana': 288, 'Greece': 300, 'Guatemala': 320,
         'Guinea': 324, 'Guinea-Bissau': 624, 'Guyana': 328, 'Haiti': 332,
         'Honduras': 340, 'Hungary': 348, 'Iceland': 352, 'India': 356,
-        'Indonesia': 360, 'Iran, Islamic Rep.': 364, 'Iraq': 368, 'Ireland': 372,
-        'Israel': 376, 'Italy': 380, "Cote d'Ivoire": 384, 'Jamaica': 388,
+        'Indonesia': 360, 'Iran': 364, 'Iraq': 368, 'Ireland': 372,
+        'Israel': 376, 'Italy': 380, 'Ivory Coast': 384, 'Jamaica': 388,
         'Japan': 392, 'Jordan': 400, 'Kazakhstan': 398, 'Kenya': 404,
-        'Korea, Rep.': 410, 'Kuwait': 414, 'Kyrgyz Republic': 417, 'Lao PDR': 418,
+        'Korea, Rep.': 410, 'Kuwait': 414, 'Kyrgyzstan': 417, 'Laos': 418,
         'Latvia': 428, 'Lebanon': 422, 'Lesotho': 426, 'Liberia': 430,
         'Libya': 434, 'Lithuania': 440, 'Luxembourg': 442, 'Madagascar': 450,
         'Malawi': 454, 'Malaysia': 458, 'Mali': 466, 'Mauritania': 478,
@@ -419,38 +420,50 @@ def viz_mapa_mundial_natalidad(df):
         'Nicaragua': 558, 'Niger': 562, 'Nigeria': 566, 'Norway': 578,
         'Oman': 512, 'Pakistan': 586, 'Panama': 591, 'Papua New Guinea': 598,
         'Paraguay': 600, 'Peru': 604, 'Philippines': 608, 'Poland': 616,
-        'Portugal': 620, 'Qatar': 634, 'Romania': 642, 'Russian Federation': 643,
+        'Portugal': 620, 'Qatar': 634, 'Romania': 642, 'Russia': 643,
         'Rwanda': 646, 'Saudi Arabia': 682, 'Senegal': 686, 'Serbia': 688,
-        'Sierra Leone': 694, 'Singapore': 702, 'Slovak Republic': 703, 'Slovenia': 705,
+        'Sierra Leone': 694, 'Singapore': 702, 'Slovakia': 703, 'Slovenia': 705,
         'Solomon Islands': 90, 'Somalia': 706, 'South Africa': 710,
         'South Sudan': 728, 'Spain': 724, 'Sri Lanka': 144, 'Sudan': 729,
-        'Suriname': 740, 'Eswatini': 748, 'Sweden': 752,
-        'Switzerland': 756, 'Syrian Arab Republic': 760, 'Tajikistan': 762, 'Tanzania': 834,
+        'Suriname': 740, 'Swaziland': 748, 'Eswatini': 748, 'Sweden': 752,
+        'Switzerland': 756, 'Syria': 760, 'Tajikistan': 762, 'Tanzania': 834,
         'Thailand': 764, 'Togo': 768, 'Trinidad and Tobago': 780,
-        'Tunisia': 788, 'Turkiye': 792, 'Turkmenistan': 795, 'Uganda': 800,
+        'Tunisia': 788, 'Turkey': 792, 'Turkmenistan': 795, 'Uganda': 800,
         'Ukraine': 804, 'United Arab Emirates': 784, 'United Kingdom': 826,
         'United States': 840, 'Uruguay': 858, 'Uzbekistan': 860,
-        'Vanuatu': 548, 'Venezuela, RB': 862, 'Viet Nam': 704, 'Yemen, Rep.': 887,
+        'Vanuatu': 548, 'Venezuela': 862, 'Vietnam': 704, 'Yemen': 887,
         'Zambia': 894, 'Zimbabwe': 716,
+        'Bahamas, The': 44, 'Brunei Darussalam': 96, 'Congo, Dem. Rep.': 180,
+        'Congo, Rep.': 178, "Cote d'Ivoire": 384, 'Czechia': 203,
+        'Egypt, Arab Rep.': 818, 'Gambia, The': 270, 'Iran, Islamic Rep.': 364,
+        'Kyrgyz Republic': 417, 'Lao PDR': 418, 'Russian Federation': 643,
+        'Slovak Republic': 703, 'Syrian Arab Republic': 760, 'Turkiye': 792,
+        'Venezuela, RB': 862, 'Viet Nam': 704, 'Yemen, Rep.': 887,
+        # Extras y territorios
+        'American Samoa': 16, 'Andorra': 20, 'Antigua and Barbuda': 28, 'Aruba': 533,
+        'Bahrain': 48, 'Barbados': 52, 'Bermuda': 60, 'British Virgin Islands': 92,
+        'Cabo Verde': 132, 'Cayman Islands': 136, 'Comoros': 174, 'Curacao': 531,
+        'Dominica': 212, 'Faroe Islands': 234, 'French Polynesia': 258, 'Gibraltar': 292,
+        'Greenland': 304, 'Grenada': 308, 'Guam': 316, 'Hong Kong SAR, China': 344,
+        'Isle of Man': 833, 'Kiribati': 296, "Korea, Dem. People's Rep.": 408,
+        'Kosovo': -99, 'Liechtenstein': 438, 'Macao SAR, China': 446, 'Maldives': 462,
+        'Malta': 470, 'Marshall Islands': 584, 'Micronesia, Fed. Sts.': 583, 'Monaco': 492,
+        'Nauru': 520, 'New Caledonia': 540, 'North Macedonia': 807,
+        'Northern Mariana Islands': 580, 'Palau': 585, 'Puerto Rico (US)': 630,
+        'Samoa': 882, 'San Marino': 674, 'Sao Tome and Principe': 678, 'Seychelles': 690,
+        'Sint Maarten (Dutch part)': 534, 'St. Kitts and Nevis': 659, 'St. Lucia': 662,
+        'St. Martin (French part)': 663, 'St. Vincent and the Grenadines': 670,
+        'Timor-Leste': 626, 'Tonga': 776, 'Turks and Caicos Islands': 796,
+        'Tuvalu': 798, 'Virgin Islands (U.S.)': 850, 'West Bank and Gaza': 275,
+        'Channel Islands': 830,
     }
     
     # Agregar ID al dataset
-    df_mapa = df.copy()
-    df_mapa['id'] = df_mapa['Pais'].map(pais_a_id)
+    df_con_regiones = df.copy()
+    df_con_regiones['id'] = df_con_regiones['Pais'].map(pais_a_id)
     
-    # Filtrar solo países con ID (que tienen geometría)
-    df_mapa = df_mapa[df_mapa['id'].notna()].copy()
-    
-    # Asegurar que tenemos las columnas necesarias
-    columnas_necesarias = ['id', 'Pais', 'Año', 'Natalidad']
-    
-    # Agregar Continente y Region si existen
-    if 'Continente' in df_mapa.columns:
-        columnas_necesarias.append('Continente')
-    if 'Region' in df_mapa.columns:
-        columnas_necesarias.append('Region')
-    
-    df_mapa = df_mapa[columnas_necesarias].copy()
+    # Filtrar solo países con ID
+    df_mapa = df_con_regiones[df_con_regiones['id'].notna()].copy()
     
     # Calcular estadísticas por año
     stats_por_año = df_mapa.groupby('Año')['Natalidad'].agg(['mean', 'min', 'max']).reset_index()
@@ -491,33 +504,46 @@ def viz_mapa_mundial_natalidad(df):
         type='naturalEarth1'
     ).properties(
         width=1080,
-        height=600
+        height=720
     )
     
-    # Crear UNA SOLA capa con todos los años
-    # Altair filtrará internamente con transform_filter
-    campos_lookup = ['Pais', 'Natalidad']
-    if 'Continente' in columnas_necesarias:
-        campos_lookup.append('Continente')
-    if 'Region' in columnas_necesarias:
-        campos_lookup.append('Region')
+    # CREAR CAPAS POR AÑO (método del notebook que funciona)
+    data_layers = []
+    for año in años_únicos:
+        df_año = df_mapa[df_mapa['Año'] == año][['id', 'Pais', 'Continente', 'Region', 'Año', 'Natalidad']].copy()
+        
+        layer = alt.Chart(countries_url).mark_geoshape(
+            stroke='white',
+            strokeWidth=0.5
+        ).encode(
+            color=alt.Color(
+                'Natalidad:Q',
+                scale=color_scale,
+                legend=None
+            ),
+            tooltip=[
+                alt.Tooltip('Pais:N', title='País'),
+                alt.Tooltip('Continente:N', title='Continente'),
+                alt.Tooltip('Region:N', title='Región'),
+                alt.Tooltip('Natalidad:Q', title='Natalidad', format='.2f')
+            ]
+        ).transform_lookup(
+            lookup='id',
+            from_=alt.LookupData(
+                data=df_año,
+                key='id',
+                fields=['Pais', 'Continente', 'Region', 'Natalidad']
+            )
+        ).transform_filter(
+            f'year == {año}'
+        ).project(
+            type='naturalEarth1'
+        )
+        
+        data_layers.append(layer)
     
-    # Tooltip dinámico según columnas disponibles
-    tooltip_config = [
-        alt.Tooltip('Pais:N', title='País'),
-        alt.Tooltip('Natalidad:Q', title='Natalidad', format='.2f')
-    ]
-    
-    if 'Continente' in columnas_necesarias:
-        tooltip_config.insert(1, alt.Tooltip('Continente:N', title='Continente'))
-    if 'Region' in columnas_necesarias:
-        tooltip_config.insert(2, alt.Tooltip('Region:N', title='Región'))
-    
-    # Capa del mapa con datos
-    mapa_datos = alt.Chart(countries_url).mark_geoshape(
-        stroke='white',
-        strokeWidth=0.5
-    ).encode(
+    # Capa dummy para la leyenda permanente
+    legend_dummy = alt.Chart(df_mapa).mark_circle(opacity=0).encode(
         color=alt.Color(
             'Natalidad:Q',
             scale=color_scale,
@@ -525,28 +551,16 @@ def viz_mapa_mundial_natalidad(df):
                 title='Natalidad (nacimientos/1000 hab)',
                 titleFontSize=12,
                 titleFontWeight='bold',
-                labelFontSize=10,
-                orient='right'
+                labelFontSize=10
             )
-        ),
-        tooltip=tooltip_config
-    ).transform_lookup(
-        lookup='id',
-        from_=alt.LookupData(
-            data=df_mapa,
-            key='id',
-            fields=campos_lookup + ['Año']
         )
-    ).transform_filter(
-        alt.datum.Año == year_param
-    ).project(
-        type='naturalEarth1'
     )
     
-    # Combinar capas
-    mapa_completo = (background + mapa_datos).properties(
+    # Combinar todas las capas
+    all_layers = [background] + [legend_dummy] + data_layers
+    mapa_completo = alt.layer(*all_layers).properties(
         width=1080,
-        height=600
+        height=720
     ).add_params(
         year_param
     )
@@ -563,7 +577,7 @@ def viz_mapa_mundial_natalidad(df):
     ).encode(
         text='label:N'
     ).transform_filter(
-        alt.datum.Año == year_param
+        'datum.Año == year'
     ).transform_calculate(
         label='toString(datum.Año) + " | Media Global: " + format(datum.mean, ".1f") + " | Rango: [" + format(datum.min, ".1f") + " - " + format(datum.max, ".1f") + "]"'
     ).properties(

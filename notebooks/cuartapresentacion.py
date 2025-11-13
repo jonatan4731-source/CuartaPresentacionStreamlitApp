@@ -3051,3 +3051,22 @@ chart3 = visualizacion_mapa_mundial_natalidad(
 
 # Mostrar
 chart3
+
+import joblib
+import os
+
+# Crear carpeta
+os.makedirs('models', exist_ok=True)
+
+# 1. Modelo
+joblib.dump(best_rf, 'models/best_model.pkl')
+
+# 2. Scaler (del pipeline_info)
+scaler = pipeline_info['etapa7_preprocesamiento']['scaler']
+joblib.dump(scaler, 'models/scaler.pkl')
+
+# 3. Imputer (del pipeline_info)
+imputer = pipeline_info['etapa7_preprocesamiento']['imputer']
+joblib.dump(imputer, 'models/imputer.pkl')
+
+print("✅ Modelos exportados!")
