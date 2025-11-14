@@ -298,7 +298,7 @@ elif pagina == "📊 Visualizaciones":
         """)
 
 # ============================================
-# PÁGINA: PREDICTOR INTERACTIVO
+# PÁGINA: PREDICTOR CON FEATURE IMPACT
 # ============================================
 
 elif pagina == "🧠 Predictor":
@@ -348,7 +348,7 @@ elif pagina == "🧠 Predictor":
         
         X_train, X_test, y_train, y_test, scaler_prep, feature_names, imputer_prep = preparar_para_modelo(
             df, 
-            año_corte=2021,  # Años <= 2021 para train, >2021 para test
+            año_corte=2021,
             random_state=42
         )
         
@@ -359,7 +359,7 @@ elif pagina == "🧠 Predictor":
         df_train_original = df[train_mask].copy()
         df_test_original = df[test_mask].copy()
     
-    st.success("Modelo cargado correctamente")
+    st.success("✅ Modelo cargado correctamente")
     
     # ============================================
     # TABS DE NAVEGACIÓN
@@ -373,7 +373,7 @@ elif pagina == "🧠 Predictor":
     
     with tab1:
         st.markdown("### 🌍 Selecciona un País para Evaluar")
-        st.markdown("Visualiza cómo el modelo predice la natalidad comparado con los datos reales.")
+        st.markdown("Visualiza cómo el modelo predice la natalidad y qué variables influyeron en la decisión.")
         
         # Selector de país
         paises_disponibles = sorted(df['Pais'].unique())
@@ -403,6 +403,7 @@ elif pagina == "🧠 Predictor":
             
             predicciones_test = []
             años_test = []
+            X_test_pais_list = []  # Guardar para análisis
             
             # Columnas a excluir para features
             columnas_excluir = ['Natalidad', 'Año', 'Pais', 'CodigoPais', 'Continente', 'Region']
@@ -422,10 +423,12 @@ elif pagina == "🧠 Predictor":
                     pred = model.predict(X_row_scaled)[0]
                     predicciones_test.append(pred)
                     años_test.append(row['Año'])
+                    X_test_pais_list.append(X_row_scaled[0])  # Guardar features escaladas
                 except Exception as e:
                     st.error(f"Error al predecir para año {row['Año']}: {e}")
                     predicciones_test.append(None)
                     años_test.append(row['Año'])
+                    X_test_pais_list.append(None)
         
         # ============================================
         # GRÁFICO: REAL VS PREDICHO
@@ -528,13 +531,13 @@ elif pagina == "🧠 Predictor":
                 st.markdown("#### 💬 Interpretación")
                 
                 if r2_pais > 0.9:
-                    st.success(f"**Excelente ajuste** - El modelo predice muy bien para {pais_seleccionado} (R² > 0.9)")
+                    st.success(f"🎯 **Excelente ajuste** - El modelo predice muy bien para {pais_seleccionado} (R² > 0.9)")
                 elif r2_pais > 0.7:
-                    st.info(f"**Buen ajuste** - El modelo predice razonablemente bien para {pais_seleccionado} (R² > 0.7)")
+                    st.info(f"✅ **Buen ajuste** - El modelo predice razonablemente bien para {pais_seleccionado} (R² > 0.7)")
                 elif r2_pais > 0.5:
-                    st.warning(f"**Ajuste moderado** - Las predicciones tienen margen de mejora (R² > 0.5)")
+                    st.warning(f"⚠️ **Ajuste moderado** - Las predicciones tienen margen de mejora (R² > 0.5)")
                 else:
-                    st.error(f"**Ajuste débil** - El modelo tiene dificultades con {pais_seleccionado} (R² < 0.5)")
+                    st.error(f"❌ **Ajuste débil** - El modelo tiene dificultades con {pais_seleccionado} (R² < 0.5)")
                 
                 st.markdown(f"""
                 - **Error promedio:** {mae_pais:.2f} nacimientos por 1000 habitantes
@@ -543,50 +546,170 @@ elif pagina == "🧠 Predictor":
                 """)
                 
                 # ============================================
-                # GRÁFICO: SCATTER REAL VS PREDICHO
+                # NUEVO: ANÁLISIS DE IMPORTANCIA DE FEATURES
                 # ============================================
                 
                 st.markdown("---")
-                st.markdown("### 🎯 Precisión de las Predicciones")
+                st.markdown("### 🔍 ¿En qué se fijó el modelo para predecir?")
+                st.markdown(f"Análisis de las variables que más influyeron en la predicción para **{pais_seleccionado}**")
                 
-                fig_scatter = go.Figure()
+                # Selector de año para analizar (si hay múltiples años en test)
+                if len(años_test) > 1:
+                    año_analizar = st.selectbox(
+                        "Selecciona el año a analizar:",
+                        options=años_test,
+                        index=len(años_test)-1  # Último año por defecto
+                    )
+                    idx_analizar = años_test.index(año_analizar)
+                else:
+                    año_analizar = años_test[0]
+                    idx_analizar = 0
                 
-                # Scatter plot
-                fig_scatter.add_trace(go.Scatter(
-                    x=y_real_pais_clean,
-                    y=y_pred_pais_clean,
-                    mode='markers',
-                    marker=dict(size=12, color='steelblue', opacity=0.6),
-                    text=[f"Año: {año}" for año in años_test],
-                    hovertemplate='<b>Real:</b> %{x:.2f}<br><b>Predicho:</b> %{y:.2f}<br>%{text}<extra></extra>'
-                ))
+                # Obtener las features escaladas para ese año
+                X_analizar = X_test_pais_list[idx_analizar]
+                pred_analizar = predicciones_test[idx_analizar]
                 
-                # Línea de predicción perfecta
-                min_val = min(y_real_pais_clean.min(), y_pred_pais_clean.min())
-                max_val = max(y_real_pais_clean.max(), y_pred_pais_clean.max())
-                fig_scatter.add_trace(go.Scatter(
-                    x=[min_val, max_val],
-                    y=[min_val, max_val],
-                    mode='lines',
-                    name='Predicción Perfecta',
-                    line=dict(color='red', dash='dash')
-                ))
-                
-                fig_scatter.update_layout(
-                    title=f"Real vs Predicho: {pais_seleccionado}",
-                    xaxis_title="Natalidad Real",
-                    yaxis_title="Natalidad Predicha",
-                    height=500,
-                    showlegend=True
-                )
-                
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                if X_analizar is not None and hasattr(model, 'feature_importances_'):
+                    # Obtener importancias globales del modelo
+                    importancias_globales = model.feature_importances_
+                    
+                    # Obtener valores de las features para este caso
+                    valores_features = X_analizar
+                    
+                    # Calcular "contribución" de cada feature
+                    # Usamos importancia * valor (simplificado, no es SHAP exacto pero es interpretable)
+                    contribuciones = importancias_globales * valores_features
+                    
+                    # Calcular baseline (predicción promedio del modelo en train)
+                    baseline = y_train.mean()
+                    
+                    # Crear DataFrame con la información
+                    df_features = pd.DataFrame({
+                        'Feature': feature_names,
+                        'Valor_Escalado': valores_features,
+                        'Importancia_Global': importancias_globales,
+                        'Contribucion': contribuciones
+                    })
+                    
+                    # Ordenar por contribución absoluta
+                    df_features['Contribucion_Abs'] = df_features['Contribucion'].abs()
+                    df_features = df_features.sort_values('Contribucion_Abs', ascending=False)
+                    
+                    # Top 15 features más influyentes
+                    top_features = df_features.head(15).copy()
+                    
+                    # Determinar si empuja hacia arriba o abajo
+                    top_features['Efecto'] = top_features['Contribucion'].apply(
+                        lambda x: 'Aumenta Natalidad' if x > 0 else 'Disminuye Natalidad'
+                    )
+                    top_features['Color'] = top_features['Contribucion'].apply(
+                        lambda x: '#2ecc71' if x > 0 else '#e74c3c'
+                    )
+                    
+                    # GRÁFICO: Feature Impact (estilo LIME)
+                    fig_impact = go.Figure()
+                    
+                    # Ordenar para que quede visual (positivos arriba, negativos abajo)
+                    top_features_sorted = top_features.sort_values('Contribucion', ascending=True)
+                    
+                    fig_impact.add_trace(go.Bar(
+                        y=top_features_sorted['Feature'],
+                        x=top_features_sorted['Contribucion'],
+                        orientation='h',
+                        marker=dict(
+                            color=top_features_sorted['Contribucion'],
+                            colorscale=[[0, '#e74c3c'], [0.5, '#f0f0f0'], [1, '#2ecc71']],
+                            line=dict(color='black', width=1)
+                        ),
+                        text=top_features_sorted['Contribucion'].apply(lambda x: f"{x:+.3f}"),
+                        textposition='outside',
+                        hovertemplate='<b>%{y}</b><br>Contribución: %{x:.4f}<br><extra></extra>'
+                    ))
+                    
+                    # Línea vertical en 0
+                    fig_impact.add_vline(
+                        x=0,
+                        line_dash="dash",
+                        line_color="black",
+                        line_width=2
+                    )
+                    
+                    fig_impact.update_layout(
+                        title=f"Impacto de Variables en la Predicción - {pais_seleccionado} ({año_analizar})",
+                        xaxis_title="Contribución a la Predicción",
+                        yaxis_title="Variable",
+                        height=600,
+                        showlegend=False,
+                        annotations=[
+                            dict(
+                                x=0.02,
+                                y=1.05,
+                                xref='paper',
+                                yref='paper',
+                                text='← Disminuye Natalidad',
+                                showarrow=False,
+                                font=dict(color='#e74c3c', size=12, family='Arial Black')
+                            ),
+                            dict(
+                                x=0.98,
+                                y=1.05,
+                                xref='paper',
+                                yref='paper',
+                                text='Aumenta Natalidad →',
+                                showarrow=False,
+                                font=dict(color='#2ecc71', size=12, family='Arial Black')
+                            )
+                        ]
+                    )
+                    
+                    st.plotly_chart(fig_impact, use_container_width=True)
+                    
+                    # Explicación de las predicciones
+                    st.markdown("#### 💡 Interpretación del Análisis")
+                    
+                    # Identificar top 3 positivas y negativas
+                    top_positivas = top_features[top_features['Contribucion'] > 0].head(3)
+                    top_negativas = top_features[top_features['Contribucion'] < 0].head(3)
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("##### 📈 Variables que AUMENTAN la natalidad:")
+                        if len(top_positivas) > 0:
+                            for idx, row in top_positivas.iterrows():
+                                st.markdown(f"- **{row['Feature']}** (+{row['Contribucion']:.3f})")
+                        else:
+                            st.markdown("- *Ninguna variable aumenta significativamente*")
+                    
+                    with col2:
+                        st.markdown("##### 📉 Variables que DISMINUYEN la natalidad:")
+                        if len(top_negativas) > 0:
+                            for idx, row in top_negativas.iterrows():
+                                st.markdown(f"- **{row['Feature']}** ({row['Contribucion']:.3f})")
+                        else:
+                            st.markdown("- *Ninguna variable disminuye significativamente*")
+                    
+                    # Resumen explicativo
+                    st.info(f"""
+                    **📊 Resumen de la Predicción:**
+                    
+                    - **Predicción del modelo:** {pred_analizar:.2f} nacimientos/1000 hab
+                    - **Línea base (promedio):** {baseline:.2f} nacimientos/1000 hab
+                    - **Desviación:** {pred_analizar - baseline:+.2f}
+                    
+                    El modelo consideró **{len(top_features)} variables principales** para hacer esta predicción.
+                    Las barras verdes indican variables que empujan la predicción hacia arriba (más natalidad),
+                    mientras que las rojas la empujan hacia abajo (menos natalidad).
+                    """)
+                    
+                else:
+                    st.warning("No se puede calcular el análisis de importancia para este modelo o predicción.")
                 
         else:
             st.info("ℹ️ No hay datos de test disponibles para este país (todos los datos son de entrenamiento)")
     
     # ============================================
-    # TAB 2: MÉTRICAS GENERALES
+    # TAB 2: MÉTRICAS GENERALES (SIN CAMBIOS)
     # ============================================
     
     with tab2:
@@ -614,21 +737,21 @@ elif pagina == "🧠 Predictor":
             st.metric(
                 "RMSE",
                 f"{rmse_general:.2f}",
-                help="Error cuadrático medio - Penaliza más los errores grandes"
+                help="Error cuadrático medio"
             )
         
         with col2:
             st.metric(
                 "MAE",
                 f"{mae_general:.2f}",
-                help="Error absoluto medio - Promedio de desviación"
+                help="Error absoluto medio"
             )
         
         with col3:
             st.metric(
                 "R² Score",
                 f"{r2_general:.4f}",
-                help="Proporción de varianza explicada (0-1, mayor es mejor)"
+                help="Proporción de varianza explicada"
             )
         
         with col4:
@@ -641,164 +764,219 @@ elif pagina == "🧠 Predictor":
         st.markdown("---")
         
         # ============================================
-        # GRÁFICO: DISTRIBUCIÓN DE ERRORES
+        # TAB 2: MÉTRICAS GENERALES
         # ============================================
         
-        st.markdown("#### 📉 Distribución de Errores")
-        
-        residuos = y_test - y_pred_test
-        
-        fig_residuos = go.Figure()
-        
-        fig_residuos.add_trace(go.Histogram(
-            x=residuos,
-            nbinsx=50,
-            marker_color='steelblue',
-            opacity=0.7,
-            name='Residuos'
-        ))
-        
-        fig_residuos.add_vline(
-            x=0,
-            line_dash="dash",
-            line_color="red",
-            annotation_text="Error = 0"
-        )
-        
-        fig_residuos.update_layout(
-            title="Distribución de Residuos (Real - Predicho)",
-            xaxis_title="Residuo",
-            yaxis_title="Frecuencia",
-            height=400,
-            showlegend=False
-        )
-        
-        st.plotly_chart(fig_residuos, use_container_width=True)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.info(f"""
-            **Estadísticas de Residuos:**
-            - Media: {residuos.mean():.3f}
-            - Mediana: {np.median(residuos):.3f}
-            - Desviación Estándar: {residuos.std():.3f}
-            """)
-        
-        with col2:
-            # Calcular porcentaje de predicciones dentro de ciertos rangos
-            dentro_1 = (np.abs(residuos) <= 1).sum() / len(residuos) * 100
-            dentro_2 = (np.abs(residuos) <= 2).sum() / len(residuos) * 100
-            dentro_3 = (np.abs(residuos) <= 3).sum() / len(residuos) * 100
+        with tab2:
+            st.markdown("### 📊 Rendimiento General del Modelo")
+            st.markdown("Evaluación del modelo en todo el conjunto de prueba")
             
-            st.success(f"""
-            **Precisión por Rango:**
-            - {dentro_1:.1f}% predicciones con error < 1
-            - {dentro_2:.1f}% predicciones con error < 2
-            - {dentro_3:.1f}% predicciones con error < 3
-            """)
-        
-        st.markdown("---")
-        
-        # ============================================
-        # GRÁFICO: REAL VS PREDICHO (SCATTER GENERAL)
-        # ============================================
-        
-        st.markdown("#### 🎯 Real vs Predicho (Todo el Test Set)")
-        
-        # Muestrear si hay muchos puntos
-        n_points = len(y_test)
-        if n_points > 1000:
-            indices = np.random.choice(n_points, 1000, replace=False)
-            y_test_sample = y_test.iloc[indices] if hasattr(y_test, 'iloc') else y_test[indices]
-            y_pred_sample = y_pred_test[indices]
-        else:
-            y_test_sample = y_test
-            y_pred_sample = y_pred_test
-        
-        fig_scatter_general = go.Figure()
-        
-        fig_scatter_general.add_trace(go.Scatter(
-            x=y_test_sample,
-            y=y_pred_sample,
-            mode='markers',
-            marker=dict(
-                size=6,
-                color=np.abs(y_test_sample - y_pred_sample),
-                colorscale='RdYlGn_r',
-                showscale=True,
-                colorbar=dict(title="Error Abs"),
-                opacity=0.6
-            ),
-            hovertemplate='<b>Real:</b> %{x:.2f}<br><b>Predicho:</b> %{y:.2f}<extra></extra>'
-        ))
-        
-        # Línea de predicción perfecta
-        min_val = min(y_test.min(), y_pred_test.min())
-        max_val = max(y_test.max(), y_pred_test.max())
-        fig_scatter_general.add_trace(go.Scatter(
-            x=[min_val, max_val],
-            y=[min_val, max_val],
-            mode='lines',
-            name='Predicción Perfecta',
-            line=dict(color='red', dash='dash', width=2)
-        ))
-        
-        fig_scatter_general.update_layout(
-            title=f"Real vs Predicho - R² = {r2_general:.4f}",
-            xaxis_title="Natalidad Real",
-            yaxis_title="Natalidad Predicha",
-            height=600,
-            showlegend=True
-        )
-        
-        st.plotly_chart(fig_scatter_general, use_container_width=True)
-        
-        # ============================================
-        # TOP/BOTTOM PAÍSES POR ERROR
-        # ============================================
-        
-        st.markdown("---")
-        st.markdown("#### Países con Mejor y Peor Predicción")
-        
-        # Calcular errores por país
-        df_test_with_pred = df_test_original.copy()
-        df_test_with_pred['Prediccion'] = y_pred_test
-        df_test_with_pred['Error_Abs'] = np.abs(df_test_with_pred['Natalidad'] - df_test_with_pred['Prediccion'])
-        
-        # Agrupar por país
-        errores_por_pais = df_test_with_pred.groupby('Pais').agg({
-            'Error_Abs': 'mean',
-            'Natalidad': 'mean'
-        }).reset_index()
-        errores_por_pais.columns = ['Pais', 'Error_Promedio', 'Natalidad_Promedio']
-        errores_por_pais = errores_por_pais.sort_values('Error_Promedio')
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("##### Mejores Predicciones:")
-            top_5_mejores = errores_por_pais.head(10)
-            st.dataframe(
-                top_5_mejores[['Pais', 'Error_Promedio', 'Natalidad_Promedio']].style.format({
-                    'Error_Promedio': '{:.2f}',
-                    'Natalidad_Promedio': '{:.2f}'
-                }),
-                use_container_width=True,
-                hide_index=True
+            with st.spinner("Calculando métricas generales..."):
+                # Predecir todo el conjunto de test
+                y_pred_test = model.predict(X_test)
+                
+                # Calcular métricas generales
+                from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+                
+                rmse_general = np.sqrt(mean_squared_error(y_test, y_pred_test))
+                mae_general = mean_absolute_error(y_test, y_pred_test)
+                r2_general = r2_score(y_test, y_pred_test)
+                mape_general = np.mean(np.abs((y_test - y_pred_test) / y_test)) * 100
+            
+            # Mostrar métricas
+            st.markdown("#### 🎯 Métricas del Conjunto de Test")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric(
+                    "RMSE",
+                    f"{rmse_general:.2f}",
+                    help="Error cuadrático medio - Penaliza más los errores grandes"
+                )
+            
+            with col2:
+                st.metric(
+                    "MAE",
+                    f"{mae_general:.2f}",
+                    help="Error absoluto medio - Promedio de desviación"
+                )
+            
+            with col3:
+                st.metric(
+                    "R² Score",
+                    f"{r2_general:.4f}",
+                    help="Proporción de varianza explicada (0-1, mayor es mejor)"
+                )
+            
+            with col4:
+                st.metric(
+                    "MAPE",
+                    f"{mape_general:.1f}%",
+                    help="Error porcentual absoluto medio"
+                )
+            
+            st.markdown("---")
+            
+            # ============================================
+            # GRÁFICO: DISTRIBUCIÓN DE ERRORES
+            # ============================================
+            
+            st.markdown("#### 📉 Distribución de Errores")
+            
+            residuos = y_test - y_pred_test
+            
+            fig_residuos = go.Figure()
+            
+            fig_residuos.add_trace(go.Histogram(
+                x=residuos,
+                nbinsx=50,
+                marker_color='steelblue',
+                opacity=0.7,
+                name='Residuos'
+            ))
+            
+            fig_residuos.add_vline(
+                x=0,
+                line_dash="dash",
+                line_color="red",
+                annotation_text="Error = 0"
             )
-        
-        with col2:
-            st.markdown("##### Peores Predicciones:")
-            top_5_peores = errores_por_pais.tail(10)
-            st.dataframe(
-                top_5_peores[['Pais', 'Error_Promedio', 'Natalidad_Promedio']].style.format({
-                    'Error_Promedio': '{:.2f}',
-                    'Natalidad_Promedio': '{:.2f}'
-                }),
-                use_container_width=True,
-                hide_index=True
+            
+            fig_residuos.update_layout(
+                title="Distribución de Residuos (Real - Predicho)",
+                xaxis_title="Residuo",
+                yaxis_title="Frecuencia",
+                height=400,
+                showlegend=False
             )
+            
+            st.plotly_chart(fig_residuos, use_container_width=True)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.info(f"""
+                **Estadísticas de Residuos:**
+                - Media: {residuos.mean():.3f}
+                - Mediana: {np.median(residuos):.3f}
+                - Desviación Estándar: {residuos.std():.3f}
+                """)
+            
+            with col2:
+                # Calcular porcentaje de predicciones dentro de ciertos rangos
+                dentro_1 = (np.abs(residuos) <= 1).sum() / len(residuos) * 100
+                dentro_2 = (np.abs(residuos) <= 2).sum() / len(residuos) * 100
+                dentro_3 = (np.abs(residuos) <= 3).sum() / len(residuos) * 100
+                
+                st.success(f"""
+                **Precisión por Rango:**
+                - {dentro_1:.1f}% predicciones con error < 1
+                - {dentro_2:.1f}% predicciones con error < 2
+                - {dentro_3:.1f}% predicciones con error < 3
+                """)
+            
+            st.markdown("---")
+            
+            # ============================================
+            # GRÁFICO: REAL VS PREDICHO (SCATTER GENERAL)
+            # ============================================
+            
+            st.markdown("#### 🎯 Real vs Predicho (Todo el Test Set)")
+            
+            # Muestrear si hay muchos puntos
+            n_points = len(y_test)
+            if n_points > 1000:
+                indices = np.random.choice(n_points, 1000, replace=False)
+                y_test_sample = y_test.iloc[indices] if hasattr(y_test, 'iloc') else y_test[indices]
+                y_pred_sample = y_pred_test[indices]
+            else:
+                y_test_sample = y_test
+                y_pred_sample = y_pred_test
+            
+            fig_scatter_general = go.Figure()
+            
+            fig_scatter_general.add_trace(go.Scatter(
+                x=y_test_sample,
+                y=y_pred_sample,
+                mode='markers',
+                marker=dict(
+                    size=6,
+                    color=np.abs(y_test_sample - y_pred_sample),
+                    colorscale='RdYlGn_r',
+                    showscale=True,
+                    colorbar=dict(title="Error Abs"),
+                    opacity=0.6
+                ),
+                hovertemplate='<b>Real:</b> %{x:.2f}<br><b>Predicho:</b> %{y:.2f}<extra></extra>'
+            ))
+            
+            # Línea de predicción perfecta
+            min_val = min(y_test.min(), y_pred_test.min())
+            max_val = max(y_test.max(), y_pred_test.max())
+            fig_scatter_general.add_trace(go.Scatter(
+                x=[min_val, max_val],
+                y=[min_val, max_val],
+                mode='lines',
+                name='Predicción Perfecta',
+                line=dict(color='red', dash='dash', width=2)
+            ))
+            
+            fig_scatter_general.update_layout(
+                title=f"Real vs Predicho - R² = {r2_general:.4f}",
+                xaxis_title="Natalidad Real",
+                yaxis_title="Natalidad Predicha",
+                height=600,
+                showlegend=True
+            )
+            
+            st.plotly_chart(fig_scatter_general, use_container_width=True)
+            
+            # ============================================
+            # TOP/BOTTOM PAÍSES POR ERROR
+            # ============================================
+            
+            st.markdown("---")
+            st.markdown("#### 🏆 Países con Mejor y Peor Predicción")
+            
+            # Calcular errores por país
+            df_test_with_pred = df_test_original.copy()
+            df_test_with_pred['Prediccion'] = y_pred_test
+            df_test_with_pred['Error_Abs'] = np.abs(df_test_with_pred['Natalidad'] - df_test_with_pred['Prediccion'])
+            
+            # Agrupar por país
+            errores_por_pais = df_test_with_pred.groupby('Pais').agg({
+                'Error_Abs': 'mean',
+                'Natalidad': 'mean'
+            }).reset_index()
+            errores_por_pais.columns = ['Pais', 'Error_Promedio', 'Natalidad_Promedio']
+            errores_por_pais = errores_por_pais.sort_values('Error_Promedio')
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("##### ✅ Mejores Predicciones (Menor Error)")
+                top_5_mejores = errores_por_pais.head(10)
+                st.dataframe(
+                    top_5_mejores[['Pais', 'Error_Promedio', 'Natalidad_Promedio']].style.format({
+                        'Error_Promedio': '{:.2f}',
+                        'Natalidad_Promedio': '{:.2f}'
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
+            
+            with col2:
+                st.markdown("##### ❌ Predicciones Más Difíciles (Mayor Error)")
+                top_5_peores = errores_por_pais.tail(10)
+                st.dataframe(
+                    top_5_peores[['Pais', 'Error_Promedio', 'Natalidad_Promedio']].style.format({
+                        'Error_Promedio': '{:.2f}',
+                        'Natalidad_Promedio': '{:.2f}'
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
 # ============================================
 # PÁGINA: DATOS
