@@ -14,6 +14,7 @@ from src.visualizations import (
     viz_evolucion_temporal_regiones,
     viz_correlaciones_interactivas,
     viz_mapa_mundial_natalidad,
+    viz_scatter_avanzado_multivariable,
     viz_distribucion_continentes,
     get_available_visualizations
 )
@@ -239,7 +240,7 @@ if pagina == "🏠 Inicio":
         """)
 
 # ============================================
-# PÁGINA: VISUALIZACIONES
+# PÁGINA: VISUALIZACIONES (actualizar)
 # ============================================
 
 elif pagina == "📊 Visualizaciones":
@@ -274,28 +275,96 @@ elif pagina == "📊 Visualizaciones":
                 chart = viz_correlaciones_interactivas(df)
             elif viz_actual['id'] == 'mapa_mundial':
                 chart = viz_mapa_mundial_natalidad(df)
+            elif viz_actual['id'] == 'scatter_avanzado':  # ⬅️ NUEVO
+                chart = viz_scatter_avanzado_multivariable(df)
             elif viz_actual['id'] == 'distribucion':
                 chart = viz_distribucion_continentes(df)
             
             if chart is not None:
                 st.altair_chart(chart, use_container_width=True)
+                
+                # Mensajes específicos según visualización
+                if viz_actual['id'] == 'scatter_avanzado':
+                    st.success("""
+                    ✅ **Visualización cargada correctamente**
+                    
+                    **Controles disponibles:**
+                    - 📊 **Variable X:** Menú desplegable superior
+                    - 📅 **Año:** Slider temporal (2000-2023)
+                    - 🌍 **Continente:** Click en la leyenda lateral
+                    - 🔍 **Detalles:** Pasa el mouse sobre los puntos
+                    
+                    **Tips:**
+                    - Click en un continente → Se resaltan sus países
+                    - Click nuevamente → Vuelve a mostrar todos
+                    - Prueba diferentes combinaciones de variables y años
+                    """)
             else:
                 st.error("❌ No se pudo generar el gráfico")
             
         except Exception as e:
             st.error(f"❌ Error al generar la visualización: {e}")
-            with st.expander("Ver detalles del error"):
+            with st.expander("🔍 Ver detalles del error"):
                 st.exception(e)
+                
+                # Debug info
+                st.write("**📋 Información de debug:**")
+                st.write(f"- Visualización ID: `{viz_actual['id']}`")
+                st.write(f"- Columnas disponibles: {len(df.columns)}")
+                st.write(f"- Registros: {len(df):,}")
+                st.write(f"- Rango años: {df['Año'].min()} - {df['Año'].max()}")
+                
+                if 'Continente' in df.columns:
+                    st.write(f"- Continentes: {df['Continente'].unique().tolist()}")
     
     # Tips de interacción
-    with st.expander("💡 Tips de interacción"):
+    with st.expander("💡 Guía de interacción"):
         st.markdown("""
-        - **Zoom:** Rueda del mouse sobre el gráfico
-        - **Pan:** Click y arrastra
-        - **Tooltip:** Pasa el mouse sobre los elementos
-        - **Filtros:** Usa los selectores interactivos
-        - **Reset:** Doble click en el gráfico
+        ### Controles generales:
+        - **🔍 Zoom:** Rueda del mouse sobre el gráfico
+        - **↔️ Pan:** Click y arrastra
+        - **ℹ️ Tooltip:** Pasa el mouse sobre elementos
+        - **🔄 Reset:** Doble click en el gráfico
+        
+        ### Scatter Avanzado:
+        - **📊 Cambiar variable:** Usa el menú "Variable X"
+        - **📅 Navegar tiempo:** Mueve el slider "Año"
+        - **🌍 Filtrar continente:** Click en leyenda
+        - **🎯 Comparar:** Selecciona diferentes continentes
         """)
+    
+    # Información de los datos
+    with st.expander("📊 Estadísticas del dataset"):
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("📝 Total registros", f"{len(df):,}")
+        with col2:
+            st.metric("🌍 Países únicos", f"{df['Pais'].nunique()}")
+        with col3:
+            st.metric("📅 Años", f"{df['Año'].min()}-{df['Año'].max()}")
+        with col4:
+            if 'Continente' in df.columns:
+                st.metric("🗺️ Continentes", f"{df['Continente'].nunique()}")
+        
+        # Mostrar variables disponibles
+        if viz_actual['id'] == 'scatter_avanzado':
+            st.markdown("---")
+            st.markdown("**🎯 Variables disponibles para análisis:**")
+            
+            columnas_excluir = ['Año', 'Pais', 'CodigoPais', 'Natalidad', 
+                               'Continente', 'Region', 'id', 'index']
+            vars_numericas = [col for col in df.select_dtypes(include=[np.number]).columns 
+                            if col not in columnas_excluir]
+            
+            st.write(f"Total: **{len(vars_numericas)}** variables numéricas")
+            
+            # Mostrar en columnas
+            num_cols = 3
+            cols = st.columns(num_cols)
+            for idx, var in enumerate(sorted(vars_numericas)):
+                with cols[idx % num_cols]:
+                    st.text(f"• {var}")
 
 # ============================================
 # PÁGINA: PREDICTOR CON FEATURE IMPACT

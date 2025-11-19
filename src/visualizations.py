@@ -604,10 +604,279 @@ def viz_mapa_mundial_natalidad(df):
     
     return chart
 
+"""
+VISUALIZACIÓN AVANZADA: Scatter Plot con Selección Múltiple
+- Eje Y: Natalidad (fijo)
+- Eje X: Feature seleccionable (de 64 variables)
+- Color: Continente
+- Selector: Continente (resalta, resto en gris)
+- Slider: Año (2000-2023)
+"""
+
+import altair as alt
+import pandas as pd
+import numpy as np
+
+
+def viz_scatter_avanzado_multivariable(df):
+    """
+    Scatter plot interactivo avanzado con múltiples controles
+    
+    Args:
+        df: DataFrame con datos procesados
+        
+    Returns:
+        alt.Chart: Gráfico combinado de Altair
+    """
+    
+    # ============================================
+    # 1. VALIDACIÓN Y PREPARACIÓN
+    # ============================================
+    required_cols = ['Natalidad', 'Año', 'Pais', 'Continente']
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(f"❌ Falta columna requerida: {col}")
+    
+    # Limpiar datos
+    df_viz = df.dropna(subset=['Natalidad', 'Continente']).copy()
+    df_viz['Año'] = df_viz['Año'].astype(int)
+    df_viz['Continente'] = df_viz['Continente'].fillna('Sin clasificar')
+    
+    año_min = int(df_viz['Año'].min())
+    año_max = int(df_viz['Año'].max())
+    
+    # ============================================
+    # 2. IDENTIFICAR TODAS LAS VARIABLES NUMÉRICAS
+    # ============================================
+    columnas_excluir = [
+        'Año', 'Pais', 'CodigoPais', 'Natalidad', 'Continente', 'Region',
+        'AñosDesde2000', 'Decada', 'CrisisEconomica2008', 'PandemiaCOVID', 
+        'id', 'index'
+    ]
+    
+    columnas_numericas = df_viz.select_dtypes(include=[np.number]).columns.tolist()
+    variables_disponibles = [col for col in columnas_numericas 
+                            if col not in columnas_excluir]
+    
+    # Filtrar por calidad de datos (al menos 20% válidos)
+    variables_validas = []
+    for var in variables_disponibles:
+        porcentaje_validos = df_viz[var].notna().sum() / len(df_viz)
+        if porcentaje_validos >= 0.2:
+            variables_validas.append(var)
+    
+    if len(variables_validas) == 0:
+        raise ValueError("❌ No hay variables numéricas con suficientes datos")
+    
+    # Crear diccionario de nombres legibles
+    nombres_legibles = {}
+    for var in variables_validas:
+        nombre = (var.replace('_', ' ')
+                     .replace('Porc', '%')
+                     .replace('PBI', 'PIB')
+                     .replace('Tasa', 'Tasa de')
+                     .title())
+        nombres_legibles[var] = nombre[:50]  # Limitar longitud
+    
+    # ============================================
+    # 3. PREPARAR DATOS EN FORMATO LONG
+    # ============================================
+    # Crear un DataFrame en formato long para poder usar dropdown
+    columnas_base = ['Año', 'Pais', 'Continente', 'Natalidad']
+    df_clean = df_viz[columnas_base + variables_validas].copy()
+    
+    # Reemplazar infinitos
+    df_clean = df_clean.replace([np.inf, -np.inf], np.nan)
+    
+    # Transformar a formato long
+    df_long = pd.melt(
+        df_clean,
+        id_vars=columnas_base,
+        value_vars=variables_validas,
+        var_name='Variable',
+        value_name='Valor'
+    )
+    
+    # Eliminar NaN en valores
+    df_long = df_long.dropna(subset=['Valor'])
+    
+    # Agregar nombres legibles
+    df_long['Variable_Nombre'] = df_long['Variable'].map(nombres_legibles)
+    
+    # ============================================
+    # 4. CONFIGURAR CONTROLES INTERACTIVOS
+    # ============================================
+    
+    # Slider de año
+    year_slider = alt.binding_range(
+        min=año_min,
+        max=año_max,
+        step=1,
+        name='Año: '
+    )
+    
+    year_param = alt.param(
+        name='year_select',
+        value=año_max,
+        bind=year_slider
+    )
+    
+    # Dropdown de variable
+    variable_dropdown = alt.binding_select(
+        options=variables_validas,
+        labels=[nombres_legibles[v] for v in variables_validas],
+        name='Variable X: '
+    )
+    
+    variable_param = alt.param(
+        name='variable_select',
+        value=variables_validas[0],
+        bind=variable_dropdown
+    )
+    
+    # Selector de continente (punto = click en leyenda)
+    continente_selection = alt.selection_point(
+        fields=['Continente'],
+        bind='legend',
+        empty=True
+    )
+    
+    # Selector de país (hover para tooltip mejorado)
+    hover_selection = alt.selection_point(
+        fields=['Pais'],
+        on='mouseover',
+        empty=True
+    )
+    
+    # ============================================
+    # 5. ESCALA DE COLORES
+    # ============================================
+    continentes_unicos = sorted(df_long['Continente'].unique())
+    colores = ['#e74c3c', '#3498db', '#f39c12', '#2ecc71', '#9b59b6', '#95a5a6']
+    
+    color_scale = alt.Scale(
+        domain=continentes_unicos,
+        range=colores[:len(continentes_unicos)]
+    )
+    
+    # ============================================
+    # 6. CREAR GRÁFICO PRINCIPAL
+    # ============================================
+    
+    base = alt.Chart(df_long).transform_filter(
+        alt.datum.Variable == variable_param
+    ).transform_filter(
+        alt.datum.Año == year_param
+    )
+    
+    # Puntos principales
+    points = base.mark_circle(
+        size=120,
+        opacity=0.8
+    ).encode(
+        x=alt.X(
+            'Valor:Q',
+            scale=alt.Scale(zero=False),
+            axis=alt.Axis(
+                title='',  # Se actualiza dinámicamente
+                titleFontSize=13,
+                titleFontWeight='bold',
+                labelFontSize=10,
+                grid=True,
+                gridOpacity=0.3
+            )
+        ),
+        y=alt.Y(
+            'Natalidad:Q',
+            scale=alt.Scale(zero=False),
+            axis=alt.Axis(
+                title='Natalidad (nacimientos por 1000 habitantes)',
+                titleFontSize=13,
+                titleFontWeight='bold',
+                labelFontSize=10,
+                grid=True,
+                gridOpacity=0.3
+            )
+        ),
+        color=alt.condition(
+            continente_selection,
+            alt.Color(
+                'Continente:N',
+                scale=color_scale,
+                legend=alt.Legend(
+                    title='Continente (click para filtrar)',
+                    titleFontSize=12,
+                    titleFontWeight='bold',
+                    labelFontSize=11,
+                    orient='right',
+                    symbolSize=200,
+                    symbolStrokeWidth=2
+                )
+            ),
+            alt.value('lightgray')
+        ),
+        size=alt.condition(
+            hover_selection,
+            alt.value(300),
+            alt.value(120)
+        ),
+        opacity=alt.condition(
+            continente_selection,
+            alt.value(0.9),
+            alt.value(0.2)
+        ),
+        tooltip=[
+            alt.Tooltip('Pais:N', title='País'),
+            alt.Tooltip('Continente:N', title='Continente'),
+            alt.Tooltip('Año:Q', title='Año', format='d'),
+            alt.Tooltip('Natalidad:Q', title='Natalidad', format='.2f'),
+            alt.Tooltip('Valor:Q', title='Valor', format='.2f'),
+            alt.Tooltip('Variable_Nombre:N', title='Variable')
+        ]
+    ).add_params(
+        year_param,
+        variable_param,
+        continente_selection,
+        hover_selection
+    ).properties(
+        width=1000,
+        height=600,
+        title={
+            'text': 'Análisis de Natalidad vs Variables Socioeconómicas',
+            'subtitle': [
+                'Selecciona una variable en el menú | Mueve el slider temporal | Click en la leyenda para filtrar continentes',
+                'Pasa el mouse sobre los puntos para ver detalles'
+            ],
+            'fontSize': 18,
+            'fontWeight': 'bold',
+            'anchor': 'start',
+            'subtitleFontSize': 12,
+            'subtitleColor': '#666'
+        }
+    )
+    
+    # ============================================
+    # 7. CONFIGURACIÓN FINAL
+    # ============================================
+    
+    final_chart = points.configure_view(
+        strokeWidth=0,
+        fill='#fafafa'
+    ).configure_axis(
+        gridColor='#e0e0e0',
+        domainColor='#333'
+    ).configure_legend(
+        strokeColor='#ddd',
+        fillColor='white',
+        padding=10,
+        cornerRadius=5
+    )
+    
+    return final_chart
 
 
 # ============================================
-# VIZ 4: DISTRIBUCIÓN POR CONTINENTE (OPCIONAL)
+# VIZ 5: DISTRIBUCIÓN POR CONTINENTE (OPCIONAL)
 # ============================================
 
 def viz_distribucion_continentes(df, year=None):
@@ -686,37 +955,44 @@ def viz_distribucion_continentes(df, year=None):
 
 
 # ============================================
-# UTILIDADES
+# ACTUALIZAR get_available_visualizations()
 # ============================================
 
 def get_available_visualizations():
-    """Retorna lista de visualizaciones disponibles"""
+    """Lista actualizada de visualizaciones"""
     return [
         {
             'id': 'evolucion_temporal',
             'nombre': 'Evolución Temporal por Región',
-            'descripcion': 'Líneas interactivas mostrando la evolución de natalidad por región geográfica',
+            'descripcion': 'Líneas interactivas mostrando la evolución de natalidad',
             'funcion': viz_evolucion_temporal_regiones
         },
         {
             'id': 'correlaciones',
             'nombre': 'Explorador de Correlaciones',
-            'descripcion': 'Scatter plot interactivo para explorar relaciones entre variables',
+            'descripcion': 'Scatter plot para explorar relaciones entre variables',
             'funcion': viz_correlaciones_interactivas
         },
         {
             'id': 'mapa_mundial',
             'nombre': 'Mapa Mundial Interactivo',
-            'descripcion': 'Mapa coroplético mundial con slider temporal de natalidad por país',
+            'descripcion': 'Mapa coroplético mundial con slider temporal',
             'funcion': viz_mapa_mundial_natalidad
+        },
+        {
+            'id': 'scatter_avanzado',  # ⬅️ NUEVA VISUALIZACIÓN
+            'nombre': 'Scatter Multivariable Avanzado',
+            'descripcion': 'Análisis de Natalidad vs 64+ variables con controles completos',
+            'funcion': viz_scatter_avanzado_multivariable
         },
         {
             'id': 'distribucion',
             'nombre': 'Distribución por Continente',
-            'descripcion': 'Boxplot mostrando la distribución de natalidad por continente',
+            'descripcion': 'Boxplot de distribución de natalidad',
             'funcion': viz_distribucion_continentes
         }
     ]
+
 
 
 if __name__ == "__main__":
